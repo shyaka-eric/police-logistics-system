@@ -5,6 +5,7 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 import viteConfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
+  base: '/logistics/',  // 🔹 Important for GitHub Pages deployment
   build: {
     reportCompressedSize: false,
     commonjsOptions: { transformMixedEsModules: true },
