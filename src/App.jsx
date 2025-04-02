@@ -31,9 +31,9 @@ const App = () => (
           <div className='divide-y divide-gray-200'>
             <div className='space-y-5 py-8 text-base leading-6 text-gray-700 sm:text-lg sm:leading-7'>
               <h1 className='text-lg font-semibold text-cyan-600'>
-                React and Tailwind CSS Starter Kit
+                Logistics
               </h1>
-              <p>Create a React project with Vite and Tailwind CSS.</p>
+              <p>Create a Logistics project.</p>
               <div className='list-disc space-y-2'>
                 {features.map((feature) => (
                   <Feature
