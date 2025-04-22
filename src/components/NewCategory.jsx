@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import SideBar from "./SideBar";
+import Sidebar from "./Sidebar";
 
 const NewCategory = () => {
   const [formData, setFormData] = useState({
@@ -26,14 +26,19 @@ const NewCategory = () => {
 
   const fetchCategories = async () => {
     try {
-        const response = await axios.get("http://localhost:5000/api/categories");
-        if (response.data && Array.isArray(response.data.categories)) {
-            setCategories(response.data.categories);
-        } else {
-          console.error("Expected an array, but received:", response.data.categories);
+      const response = await axios.get("http://localhost:5000/api/categories", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`
         }
+      });
+      if (response.data) {
+        setCategories(response.data);
+      } else {
+        console.error("Failed to fetch categories:", response.data);
+      }
     } catch (error) {
       console.error("❌ Error fetching categories:", error);
+      setMessage("Failed to fetch categories");
     }
   };
 
@@ -85,28 +90,23 @@ const NewCategory = () => {
   };
 
   const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this category?')) return;
+
     try {
       const token = localStorage.getItem("token");
   
-      // Check if token exists
       if (!token) {
         console.error("❌ No token found. User is not authenticated.");
         setMessage("Unauthorized - Please log in again.");
         return;
       }
   
-      // Send DELETE request to the backend
       await axios.delete(`http://localhost:5000/api/categories/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
   
       // Fetch updated categories after deletion
-      const updatedResponse = await axios.get("http://localhost:5000/api/categories", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-  
-      // Update the categories state
-      setCategories(updatedResponse.data.categories);
+      await fetchCategories();
   
       // Success message
       setMessage("Category deleted successfully!");
@@ -115,7 +115,6 @@ const NewCategory = () => {
   
       // Handle specific error cases
       if (error.response) {
-        // Backend responded with an error status code (4xx or 5xx)
         switch (error.response.status) {
           case 401:
             setMessage("Unauthorized - Please log in again.");
@@ -130,10 +129,8 @@ const NewCategory = () => {
             setMessage("Failed to delete category. Please try again.");
         }
       } else if (error.request) {
-        // No response received from the server
         setMessage("Network error - Please check your internet connection.");
       } else {
-        // Something else went wrong
         setMessage("An unexpected error occurred. Please try again.");
       }
     }
@@ -141,7 +138,7 @@ const NewCategory = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-100">
-      <SideBar />
+      <Sidebar />
       <div className="flex-1 p-6">
         <div className="bg-white p-4 shadow-md flex justify-between items-center rounded-lg">
           <h1 className="text-2xl font-semibold text-gray-700">

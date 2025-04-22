@@ -10,62 +10,86 @@ const Login = ({ setUser }) => {
     email: "",
     password: "",
     confirmPassword: "",
+    role: "UnitLeader"
   });
   const [error, setError] = useState("");
+  const [showRoleDescription, setShowRoleDescription] = useState(false);
 
   const navigate = useNavigate(); // Get the navigate function from useNavigate
 
+  const roleDescriptions = {
+    UnitLeader: "End User: Requests items and repairs, tracks in-use items",
+    Admin: "Assesses requests, manages approvals, tracks stock availability",
+    LogisticsOfficer: "Manages stock updates and issues approved items",
+    SystemAdmin: "Manages users, oversees stock, generates reports, monitors system logs"
+  };
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (e.target.name === 'role') {
+      setShowRoleDescription(true);
+    }
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setError("");
+    e.preventDefault();
+    setError("");
 
-  if (!isLogin && formData.password !== formData.confirmPassword) {
-    setError("Passwords do not match!");
-    return;
-  }
-
-  try {
-    const endpoint = isLogin ? "login" : "register";
-    const payload = isLogin
-      ? { email: formData.email, password: formData.password }
-      : {
-          name: formData.fullName,
-          email: formData.email,
-          password: formData.password,
-          role: "UnitLeader", // Default role
-        };
-
-    const { data } = await axios.post(
-      `http://localhost:5000/api/auth/${endpoint}`,
-      payload
-    );
-
-    if (isLogin) {
-      // ✅ Store token and full user data in localStorage
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user)); // Save full user data
-
-      // ✅ Update state with full user object instead of just role
-      setUser(data.user);  // Make sure setUser is called here
-
-      // ✅ Redirect to the dashboard after login
-      navigate("/dashboard"); // Use navigate to redirect to "/dashboard"
-      // navigate("/login");
-    } else {
-      alert("Registration successful! You can now log in.");
-      setIsLogin(true);
+    if (!isLogin && formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match!");
+      return;
     }
-  } catch (error) {
-    console.log("Error details:", error); // Logs the full error object
-    console.log("Error response data:", error.response?.data); // Logs the response error data
-    setError(error.response?.data?.error || "Something went wrong.");
-  }
-};
 
+    try {
+      const endpoint = isLogin ? "login" : "register";
+      const payload = isLogin
+        ? { email: formData.email, password: formData.password }
+        : {
+            name: formData.fullName,
+            email: formData.email,
+            password: formData.password,
+            role: formData.role,
+          };
+
+      const { data } = await axios.post(
+        `http://localhost:5000/api/auth/${endpoint}`,
+        payload
+      );
+
+      // Check user status before proceeding with login
+      if (data.user?.status === 'inactive') {
+        setError("Your account has been deactivated. Please contact your system administrator.");
+        return;
+      }
+
+      if (isLogin) {
+        // Only store data and redirect if user is active
+        if (data.user?.status === 'active' || !data.user?.status) {
+          localStorage.setItem("token", data.token);
+          localStorage.setItem("user", JSON.stringify(data.user)); 
+          setUser(data.user);  
+          navigate("/dashboard"); 
+        }
+      } else {
+        alert("Registration successful! You can now log in.");
+        setIsLogin(true);
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      
+      if (error.response?.status === 403) {
+        setError(error.response.data.message || "Your account has been deactivated. Please contact your system administrator.");
+      } else if (error.response?.status === 401) {
+        setError("Invalid email or password.");
+      } else {
+        setError(error.response?.data?.message || "An error occurred. Please try again.");
+      }
+
+      // Clear any stored data if there's an error
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col justify-center bg-gray-100 py-6 sm:py-12">
@@ -79,18 +103,48 @@ const Login = ({ setUser }) => {
             </h2>
           </div>
 
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+          {error && (
+            <div className="mt-4 rounded-md bg-red-50 p-3">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          )}
 
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             {!isLogin && (
-              <input
-                type="text"
-                name="fullName"
-                placeholder="Full Name"
-                className="w-full rounded-lg border p-2"
-                onChange={handleChange}
-                required
-              />
+              <>
+                <input
+                  type="text"
+                  name="fullName"
+                  placeholder="Full Name"
+                  className="w-full rounded-lg border p-2"
+                  onChange={handleChange}
+                  required
+                />
+                <div className="relative">
+                  <select
+                    name="role"
+                    value={formData.role}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border p-2 bg-white appearance-none"
+                    required
+                  >
+                    <option value="UnitLeader">Unit Leader</option>
+                    <option value="Admin">Admin</option>
+                    <option value="LogisticsOfficer">Logistics Officer</option>
+                    <option value="SystemAdmin">System Admin</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                      <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                    </svg>
+                  </div>
+                </div>
+                {showRoleDescription && (
+                  <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded-lg">
+                    {roleDescriptions[formData.role]}
+                  </div>
+                )}
+              </>
             )}
             <input
               type="email"
@@ -120,21 +174,22 @@ const Login = ({ setUser }) => {
             )}
             <button
               type="submit"
-              className="w-full rounded-lg bg-cyan-600 p-2 text-white hover:bg-cyan-700"
+              className="w-full rounded-lg bg-cyan-600 py-2 text-white hover:bg-cyan-700 transition-colors duration-200"
             >
               {isLogin ? "Login" : "Register"}
             </button>
           </form>
 
-          <p className="mt-4 text-center text-sm text-gray-600">
-            {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
+          <div className="mt-4 text-center">
             <button
-              className="text-cyan-500 hover:underline"
               onClick={() => setIsLogin(!isLogin)}
+              className="text-sm text-cyan-600 hover:text-cyan-800 transition-colors duration-200"
             >
-              {isLogin ? "Register" : "Login"}
+              {isLogin
+                ? "Don't have an account? Register"
+                : "Already have an account? Login"}
             </button>
-          </p>
+          </div>
         </div>
       </div>
     </div>

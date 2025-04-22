@@ -1,6 +1,12 @@
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { checkAuthStatus } from './utils/auth';
+import Login from './Login';
+import Dashboard from './Dashboard';
 import Feature from '@components/Feature';
 import Footer from '@components/Footer';
 import logo from '@images/logo.png';
+import axios from 'axios';
 
 const features = [
   {
@@ -17,42 +23,79 @@ const features = [
   },
 ];
 
-const App = () => (
-  <div className='flex min-h-screen flex-col justify-center bg-gray-100 py-6 sm:py-12'>
-    <div className='relative py-3 sm:mx-auto sm:max-w-xl'>
-      <div className='to-light-blue-500 absolute inset-0 -skew-y-6 transform bg-gradient-to-r from-cyan-400 shadow-lg sm:-rotate-6 sm:skew-y-0 sm:rounded-3xl' />
-      <div className='relative bg-white px-4 py-10 shadow-lg sm:rounded-3xl sm:p-20'>
-        <div className='mx-auto max-w-md'>
-          <div>
-            <a href='https://digitalinspiration.com/'>
-              <img src={logo} className='h-7 sm:h-8' alt='Logo' />
-            </a>
-          </div>
-          <div className='divide-y divide-gray-200'>
-            <div className='space-y-5 py-8 text-base leading-6 text-gray-700 sm:text-lg sm:leading-7'>
-              <h1 className='text-lg font-semibold text-cyan-600'>
-                Logistics
-              </h1>
-              <p>Create a Logistics project.</p>
-              <div className='list-disc space-y-2'>
-                {features.map((feature) => (
-                  <Feature
-                    key={feature.title}
-                    title={feature.title}
-                    description={feature.description}
-                  />
-                ))}
-              </div>
-              <p className='text-sm font-medium text-cyan-500'>
-                Built with Tailwind CSS 4 and React 19.
-              </p>
-            </div>
-            <Footer />
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-);
+const App = () => {
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const validateSession = async () => {
+      try {
+        // Check if we have a stored user
+        const storedUser = localStorage.getItem('user');
+        if (!storedUser) {
+          setIsLoading(false);
+          return;
+        }
+
+        // Validate the session
+        const validatedUser = await checkAuthStatus();
+        setUser(validatedUser);
+      } catch (error) {
+        // If error is 'Account deactivated', show an alert
+        if (error.message === 'Account deactivated') {
+          alert('Your account has been deactivated. Please contact your system administrator.');
+        }
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    validateSession();
+  }, []);
+
+  // Add an axios interceptor to handle 403 responses
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response?.status === 403 && error.response.data?.isDeactivated) {
+          // Clear user data and redirect to login
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+          alert('Your account has been deactivated. Please contact your system administrator.');
+          window.location.href = '/login';
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-600"></div>
+    </div>;
+  }
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/login" element={
+          user ? <Navigate to="/dashboard" /> : <Login setUser={setUser} />
+        } />
+        <Route path="/dashboard/*" element={
+          user ? <Dashboard user={user} setUser={setUser} /> : <Navigate to="/login" />
+        } />
+        {/* Add other protected routes here */}
+        <Route path="/" element={<Navigate to="/dashboard" />} />
+      </Routes>
+    </Router>
+  );
+};
 
 export default App;

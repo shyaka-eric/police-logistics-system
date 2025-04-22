@@ -1,71 +1,162 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { FiHome, FiUser, FiSettings, FiLogOut } from "react-icons/fi";
-import SideBar from "./components/SideBar";
+import React from "react";
+import { Link } from "react-router-dom";
+import { FaBox, FaClipboardList, FaChartBar, FaTools } from 'react-icons/fa';
+import Sidebar from "./components/Sidebar";
 
 const Dashboard = () => {
-  const [user, setUser] = useState(null);
-  const navigate = useNavigate();
+  const user = JSON.parse(localStorage.getItem('user'));
 
-  // Simulated static data
-  const stats = [
-    { title: "Total Orders", value: 120, color: "bg-blue-500" },
-    { title: "Pending Requests", value: 8, color: "bg-yellow-500" },
-    { title: "Completed Deliveries", value: 95, color: "bg-green-500" },
-    { title: "Total Users", value: 500, color: "bg-purple-500" },
-  ];
+  const renderLogisticsOfficerOptions = () => (
+    <div className="mt-8">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Quick Access</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Link to="/approved-requests" 
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
+          <div className="flex items-center text-cyan-600 mb-3">
+            <FaClipboardList className="text-xl" />
+            <h3 className="text-lg font-semibold ml-2">Process Requests</h3>
+          </div>
+          <p className="text-gray-600">View and fulfill approved requests</p>
+        </Link>
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (!storedUser) {
-      navigate("/login");
-    } else {
-      setUser(JSON.parse(storedUser));
+        <Link to="/stock-management" 
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
+          <div className="flex items-center text-cyan-600 mb-3">
+            <FaBox className="text-xl" />
+            <h3 className="text-lg font-semibold ml-2">Manage Stock</h3>
+          </div>
+          <p className="text-gray-600">Update and track inventory levels</p>
+        </Link>
+
+        <Link to="/reports" 
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
+          <div className="flex items-center text-cyan-600 mb-3">
+            <FaChartBar className="text-xl" />
+            <h3 className="text-lg font-semibold ml-2">View Reports</h3>
+          </div>
+          <p className="text-gray-600">Access inventory reports and analytics</p>
+        </Link>
+      </div>
+    </div>
+  );
+
+  const renderUnitLeaderOptions = () => (
+    <div className="mt-8">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Quick Access</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Link to="/request-form" 
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
+          <div className="flex items-center text-cyan-600 mb-3">
+            <FaClipboardList className="text-xl" />
+            <h3 className="text-lg font-semibold ml-2">Make Request</h3>
+          </div>
+          <p className="text-gray-600">Submit new item requests</p>
+        </Link>
+
+        <Link to="/my-requests" 
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
+          <div className="flex items-center text-cyan-600 mb-3">
+            <FaBox className="text-xl" />
+            <h3 className="text-lg font-semibold ml-2">My Requests</h3>
+          </div>
+          <p className="text-gray-600">View your request history</p>
+        </Link>
+      </div>
+    </div>
+  );
+
+  const renderAdminOptions = () => (
+    <div className="mt-8">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Quick Access</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Link to="/assess-requests" 
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
+          <div className="flex items-center text-cyan-600 mb-3">
+            <FaClipboardList className="text-xl" />
+            <h3 className="text-lg font-semibold ml-2">Assess Requests</h3>
+          </div>
+          <p className="text-gray-600">Review and process pending requests</p>
+        </Link>
+
+        <Link to="/stock-management" 
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
+          <div className="flex items-center text-cyan-600 mb-3">
+            <FaBox className="text-xl" />
+            <h3 className="text-lg font-semibold ml-2">Stock Management</h3>
+          </div>
+          <p className="text-gray-600">Monitor and manage inventory</p>
+        </Link>
+
+        <Link to="/reports" 
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
+          <div className="flex items-center text-cyan-600 mb-3">
+            <FaChartBar className="text-xl" />
+            <h3 className="text-lg font-semibold ml-2">Reports</h3>
+          </div>
+          <p className="text-gray-600">View system reports and analytics</p>
+        </Link>
+      </div>
+    </div>
+  );
+
+  const renderRoleOptions = () => {
+    switch (user?.role) {
+      case 'LogisticsOfficer':
+        return renderLogisticsOfficerOptions();
+      case 'UnitLeader':
+        return renderUnitLeaderOptions();
+      case 'Admin':
+        return renderAdminOptions();
+      default:
+        return null;
     }
-  }, [navigate]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    navigate("/login");
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
-      <SideBar/>
-
-      {/* Main Content */}
-      <div className="flex-1 p-6">
-        {/* Header */}
-        <div className="bg-white p-4 shadow-md flex justify-between items-center rounded-lg">
-          <h1 className="text-2xl font-semibold text-gray-700">User, {user?.name} 🎉</h1>
-          <p className="text-gray-600">Role: {user?.role}</p>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
-          {stats.map((stat, index) => (
-            <div
-              key={index}
-              className={`${stat.color} text-white p-5 rounded-lg shadow-md`}
-            >
-              <h2 className="text-lg font-semibold">{stat.title}</h2>
-              <p className="text-3xl font-bold mt-2">{stat.value}</p>
+    <div className="flex h-screen bg-gray-100">
+      <Sidebar />
+      <div className="flex-1 p-8">
+        {/* Header with user info */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+          <div className="flex items-center">
+            <h1 className="text-2xl font-semibold">
+              User, {user?.name} <span role="img" aria-label="party">🎉</span>
+            </h1>
+            <div className="ml-4 text-gray-600">
+              Role: {user?.role}
             </div>
-          ))}
+          </div>
         </div>
 
-        {/* Recent Activity */}
-        <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-semibold text-gray-700 mb-4">Recent Activity</h2>
-          <ul className="text-gray-600">
-            <li className="mb-2">✔ Order #12345 has been delivered</li>
-            <li className="mb-2">🔄 User "Michael" updated his profile</li>
-            <li className="mb-2">📦 5 new orders placed today</li>
-            <li className="mb-2">⚠ 2 pending requests require approval</li>
-          </ul>
+        {/* Statistics Grid */}
+        <div className="grid grid-cols-2 gap-6 mb-8">
+          {/* Total Orders */}
+          <div className="bg-blue-500 text-white rounded-lg p-6">
+            <h2 className="text-xl mb-4">Total Orders</h2>
+            <div className="text-4xl font-bold">120</div>
+          </div>
+
+          {/* Pending Requests */}
+          <div className="bg-yellow-500 text-white rounded-lg p-6">
+            <h2 className="text-xl mb-4">Pending Requests</h2>
+            <div className="text-4xl font-bold">8</div>
+          </div>
+
+          {/* Completed Deliveries */}
+          <div className="bg-green-500 text-white rounded-lg p-6">
+            <h2 className="text-xl mb-4">Completed Deliveries</h2>
+            <div className="text-4xl font-bold">95</div>
+          </div>
+
+          {/* Total Users */}
+          <div className="bg-purple-500 text-white rounded-lg p-6">
+            <h2 className="text-xl mb-4">Total Users</h2>
+            <div className="text-4xl font-bold">500</div>
+          </div>
         </div>
+
+        {/* Role-specific Quick Access Options */}
+        {renderRoleOptions()}
       </div>
     </div>
   );

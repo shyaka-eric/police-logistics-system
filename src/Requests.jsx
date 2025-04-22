@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import SideBar from "./components/SideBar";
+import Sidebar from "./components/Sidebar";
 import $ from "jquery";
 import "datatables.net-dt/css/dataTables.dataTables.css";
 import "datatables.net";
@@ -87,7 +87,7 @@ const Requests = () => {
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Sidebar */}
-      <SideBar />
+      <Sidebar />
 
       {/* Main Content */}
       <div className="flex-1 p-6">

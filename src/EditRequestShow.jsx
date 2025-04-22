@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom"; // import useParams to get the requestId
 import { FiHome, FiUser, FiSettings, FiLogOut } from "react-icons/fi";
 import EditUser from "./components/EditUser"; // Import your EditRequest component
-import SideBar from "./components/SideBar";
+import Sidebar from "./components/Sidebar";
 
 const EditRequestShow = () => {
   const [user, setUser] = useState(null);
@@ -35,7 +35,7 @@ const EditRequestShow = () => {
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Sidebar */}
-      <SideBar />
+      <Sidebar />
 
       {/* Main Content */}
       <div className="flex-1 p-6">

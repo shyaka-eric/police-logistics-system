@@ -1,192 +1,213 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useState } from 'react';
+import axios from 'axios';
 
 const RequestForm = () => {
   const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    priority: "Medium",
-    category: "General",
-    type: "new-item",
-    status: "Pending",
+    itemName: '',
+    quantity: 1,
+    unit: '',
+    purpose: '',
+    priority: 'normal'
   });
-
-  const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [items, setItems] = useState([]); // Store available items fetched from the database
-
-  useEffect(() => {
-    const fetchItems = async () => {
-      try {
-        const response = await axios.get("http://localhost:5000/api/items");
-        if (response.data && Array.isArray(response.data.items)) {
-          setItems(response.data.items); // Accessing the 'items' array inside the response
-        } else {
-          console.error("Expected an array, but received:", response.data);
-        }
-      } catch (error) {
-        console.error("Error fetching items:", error);
-      }
-    };
-
-    fetchItems();
-  }, []);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage("");
     setIsSubmitting(true);
+    setMessage({ type: '', text: '' });
+
+    // Validate form data
+    if (!formData.itemName.trim()) {
+      setMessage({ type: 'error', text: 'Item name is required' });
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (formData.quantity < 1) {
+      setMessage({ type: 'error', text: 'Quantity must be at least 1' });
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!formData.unit.trim()) {
+      setMessage({ type: 'error', text: 'Unit is required' });
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!formData.purpose.trim()) {
+      setMessage({ type: 'error', text: 'Purpose is required' });
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem('token');
       if (!token) {
-        setMessage("Unauthorized - Please log in again.");
+        setMessage({ type: 'error', text: 'You must be logged in to submit a request' });
         setIsSubmitting(false);
         return;
       }
 
-      console.log("🔹 Sending Request:", formData);
+      console.log('Submitting request with data:', formData);
+      console.log('Using token:', token);
 
       const response = await axios.post(
-        "http://localhost:5000/api/requests",
+        'http://localhost:5000/api/requests',
         formData,
         {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         }
       );
 
-      console.log("✅ Response:", response.data);
-      setMessage("Request submitted successfully!");
+      console.log('Response from server:', response.data);
+
+      setMessage({
+        type: 'success',
+        text: 'Item request submitted successfully!'
+      });
+      
+      // Reset form
       setFormData({
-        title: "",
-        description: "",
-        priority: "Medium",
-        category: "General",
-        type: "new-item",
-        status: "Pending",
+        itemName: '',
+        quantity: 1,
+        unit: '',
+        purpose: '',
+        priority: 'normal'
       });
     } catch (error) {
-      console.error("❌ Request Submission Error:", error);
-      setMessage("Failed to submit request.");
+      console.error('Error submitting request:', error);
+      console.error('Error response:', error.response?.data);
+      
+      let errorMessage = 'Failed to submit item request';
+      if (error.response) {
+        if (error.response.status === 401) {
+          errorMessage = 'You must be logged in to submit a request';
+        } else if (error.response.data?.message) {
+          errorMessage = error.response.data.message;
+        }
+      } else if (error.request) {
+        errorMessage = 'No response from server. Please check if the server is running.';
+      }
+
+      setMessage({
+        type: 'error',
+        text: errorMessage
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-xl font-semibold text-gray-700 mb-4">Submit a Request</h2>
-
-      {message && (
-        <p className={`text-${message.includes('successfully') ? 'green' : 'red'}-500`}>
-          {message}
-        </p>
+    <div className="max-w-2xl mx-auto p-6">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Request New Items</h2>
+      
+      {message.text && (
+        <div className={`p-4 mb-6 rounded-lg ${
+          message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+        }`}>
+          {message.text}
+        </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Request Title - Item Name Dropdown */}
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block text-gray-700">Item Name</label>
-          <select
-            name="title"
-            value={formData.title}
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Item Name
+          </label>
+          <input
+            type="text"
+            name="itemName"
+            value={formData.itemName}
             onChange={handleChange}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full rounded-lg border p-2 focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
             required
-          >
-            <option value="">Select Item</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.name}>{item.name}</option>
-            ))}
-          </select>
+          />
         </div>
 
-        {/* Request Description */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Quantity
+            </label>
+            <input
+              type="number"
+              name="quantity"
+              value={formData.quantity}
+              onChange={handleChange}
+              min="1"
+              className="w-full rounded-lg border p-2 focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Unit
+            </label>
+            <input
+              type="text"
+              name="unit"
+              value={formData.unit}
+              onChange={handleChange}
+              placeholder="e.g., pieces, kg, liters"
+              className="w-full rounded-lg border p-2 focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              required
+            />
+          </div>
+        </div>
+
         <div>
-          <label className="block text-gray-700">Description</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Purpose
+          </label>
           <textarea
-            name="description"
-            value={formData.description}
+            name="purpose"
+            value={formData.purpose}
             onChange={handleChange}
-            rows="4"
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+            rows="3"
+            className="w-full rounded-lg border p-2 focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
             required
-          ></textarea>
+          />
         </div>
 
-        {/* Priority Selection */}
         <div>
-          <label className="block text-gray-700">Priority</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Priority Level
+          </label>
           <select
             name="priority"
             value={formData.priority}
             onChange={handleChange}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full rounded-lg border p-2 focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
           >
-            <option value="Low">Low</option>
-            <option value="Medium">Medium</option>
-            <option value="High">High</option>
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
           </select>
         </div>
 
-        {/* Category Selection */}
-        <div>
-          <label className="block text-gray-700">Category</label>
-          <select
-            name="category"
-            value={formData.category}
-            onChange={handleChange}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-          >
-            <option value="General">General</option>
-            <option value="Technical Support">Technical Support</option>
-            <option value="Logistics">Logistics</option>
-            <option value="HR">HR</option>
-          </select>
-        </div>
-
-        {/* Type Selection */}
-        <div>
-          <label className="block text-gray-700">Type</label>
-          <select
-            name="type"
-            value={formData.type}
-            onChange={handleChange}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-          >
-            <option value="new-item">New item</option>
-            <option value="repair">Repair</option>
-          </select>
-        </div>
-
-        {/* Status Selection */}
-        <div>
-          <label className="block text-gray-700">Status</label>
-          <select
-            name="status"
-            value={formData.status}
-            onChange={handleChange}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-          >
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="denied">Denied</option>
-            <option value="under-repair">Under Repair</option>
-            <option value="damaged">Damaged</option>
-          </select>
-        </div>
-
-        {/* Submit Button */}
         <button
           type="submit"
           disabled={isSubmitting}
-          className={`w-full py-2 rounded-lg ${isSubmitting ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'} text-white transition`}
+          className={`w-full py-2 px-4 rounded-lg text-white font-medium ${
+            isSubmitting
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-cyan-600 hover:bg-cyan-700'
+          } transition-colors duration-200`}
         >
-          {isSubmitting ? "Submitting..." : "Submit Request"}
+          {isSubmitting ? 'Submitting...' : 'Submit Request'}
         </button>
       </form>
     </div>

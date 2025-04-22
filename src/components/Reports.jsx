@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Bar } from "react-chartjs-2";
 import { Chart, registerables } from "chart.js";
-import SideBar from "./SideBar";
+import Sidebar from "./Sidebar";
 
 // Register Chart.js components
 Chart.register(...registerables);
@@ -66,7 +66,7 @@ const Reports = () => {
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Sidebar */}
-      <SideBar />
+      <Sidebar />
 
       {/* Main Content */}
       <div className="flex-1 p-6">
