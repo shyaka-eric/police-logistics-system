@@ -118,17 +118,11 @@ export const SystemLogs = () => {
           className="border rounded p-2"
         >
           <option>All Actions</option>
-          <option value="LOGIN">Login</option>
-          <option value="LOGOUT">Logout</option>
-          <option value="CREATE_USER">Create User</option>
-          <option value="UPDATE_USER_STATUS">Update User Status</option>
-          <option value="UPDATE_USER_ROLE">Update User Role</option>
-          <option value="CREATE_STOCK">Create Stock</option>
-          <option value="UPDATE_STOCK">Update Stock</option>
-          <option value="DELETE_STOCK">Delete Stock</option>
-          <option value="CREATE_REPAIR_REQUEST">Create Repair Request</option>
-          <option value="UPDATE_REPAIR_STATUS">Update Repair Status</option>
-          <option value="ADD_REPAIR_REMARK">Add Repair Remark</option>
+          <option value="view">View</option>
+          <option value="create">Create</option>
+          <option value="update">Update</option>
+          <option value="delete">Delete</option>
+          <option value="other">Other</option>
         </select>
         <div className="flex gap-2">
           <input
@@ -153,40 +147,61 @@ export const SystemLogs = () => {
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border rounded-lg">
+            <table className="w-full bg-white border rounded-lg table-fixed">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Module</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Performed By</th>
+                  <th className="w-[180px] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+                  <th className="w-[100px] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                  <th className="w-[120px] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Module</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                  <th className="w-[120px] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                  <th className="w-[120px] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {logs.map((log) => (
-                  <tr key={log._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {log.timestamp ? format(new Date(log.timestamp), 'MM/dd/yyyy, hh:mm:ss a') : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${log.action === 'DELETE_STOCK' ? 'bg-red-100 text-red-800' : 
-                          log.action?.startsWith('CREATE_') ? 'bg-green-100 text-green-800' : 
-                          log.action?.startsWith('UPDATE_') ? 'bg-yellow-100 text-yellow-800' : 
-                          'bg-gray-100 text-gray-800'}`}>
-                        {log.action ? log.action.split('_').map(word => word.charAt(0) + word.slice(1).toLowerCase()).join(' ') : 'Unknown'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {log.action ? (log.action.split('_')[1]?.toLowerCase() || 'system') : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{log.details || 'No details'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {log.performedBy?.name || 'System'}
-                    </td>
-                  </tr>
-                ))}
+                {logs.map((log) => {
+                  const timestamp = log.timestamp ? new Date(log.timestamp) : null;
+                  const isValidDate = timestamp && !isNaN(timestamp.getTime());
+                  
+                  return (
+                    <tr key={log._id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-sm text-gray-500">
+                        {isValidDate ? format(timestamp, 'MMM dd, yyyy HH:mm:ss') : 'N/A'}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                          ${log.action === 'delete' ? 'bg-red-100 text-red-800' : 
+                            log.action === 'create' ? 'bg-green-100 text-green-800' : 
+                            log.action === 'update' ? 'bg-yellow-100 text-yellow-800' :
+                            log.action === 'view' ? 'bg-blue-100 text-blue-800' :
+                            'bg-gray-100 text-gray-800'}`}>
+                          {log.action ? log.action.charAt(0).toUpperCase() + log.action.slice(1) : 'Unknown'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-500">
+                        {log.module || 'system'}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-500">
+                        <div className="break-words">
+                          {log.details || 'No details'}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-500">
+                        {log.performedBy?.name || 'System'}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                          ${log.userRole === 'Admin' ? 'bg-purple-100 text-purple-800' :
+                            log.userRole === 'SystemAdmin' ? 'bg-blue-100 text-blue-800' :
+                            log.userRole === 'LogisticsOfficer' ? 'bg-green-100 text-green-800' :
+                            log.userRole === 'UnitLeader' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'}`}>
+                          {log.userRole || 'Unknown'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

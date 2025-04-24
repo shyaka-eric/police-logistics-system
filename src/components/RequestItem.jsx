@@ -1,16 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { format } from 'date-fns';
 import { FaSpinner, FaUpload, FaFileExcel, FaCloudUploadAlt } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
+
+// Configure axios base URL
+const api = axios.create({
+  baseURL: 'http://localhost:5000'
+});
 
 export const RequestItem = () => {
   const [requestMethod, setRequestMethod] = useState('form'); // 'form' or 'excel'
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [userRole, setUserRole] = useState('');
   const [formData, setFormData] = useState({
     itemName: '',
     quantity: '',
@@ -20,61 +27,28 @@ export const RequestItem = () => {
     category: ''
   });
 
+  // Filtered items based on selected category
+  const filteredItems = items.filter(item => 
+    formData.category ? item.category === formData.category : true
+  );
+
   // Fetch available items and categories on component mount
   useEffect(() => {
     fetchItems();
     fetchCategories();
+    // Get user role from localStorage
+    const user = JSON.parse(localStorage.getItem('user'));
+    setUserRole(user?.role || '');
   }, []);
 
   const fetchItems = async () => {
     try {
       setLoading(true);
-      setError(null);
-      
       const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Authentication token not found. Please log in again.');
-      }
-
-      const user = JSON.parse(localStorage.getItem('user'));
-      console.log('Current user:', user); // Debug log
-
-      // Define allowed roles with correct casing
-      const allowedRoles = ['LogisticsOfficer', 'Admin', 'UnitLeader'];
-      
-      // Normalize role check
-      const normalizedUserRole = user?.role?.toLowerCase();
-      const normalizedAllowedRoles = allowedRoles.map(role => role.toLowerCase());
-
-      console.log('Role check:', {
-        originalRole: user?.role,
-        normalizedRole: normalizedUserRole,
-        allowedRoles: normalizedAllowedRoles
+      const response = await api.get('/api/stock', {
+        headers: { Authorization: `Bearer ${token}` }
       });
-
-      if (!user || !normalizedUserRole || !normalizedAllowedRoles.includes(normalizedUserRole)) {
-        throw new Error('You do not have permission to view stock items. Please contact your administrator.');
-      }
-
-      console.log('Fetching items with token:', token.substring(0, 10) + '...');
-      
-      const response = await axios.get('http://localhost:5000/api/stock', {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      console.log('Items response:', response.data);
-      
-      if (!Array.isArray(response.data)) {
-        throw new Error('Invalid response format from server');
-      }
-
-      const availableItems = response.data.filter(item => item.quantity > 0);
-      console.log('Available items:', availableItems.length);
-      
-      setItems(availableItems);
+      setItems(response.data);
     } catch (err) {
       console.error('Error fetching items:', err);
       if (err.response?.status === 403) {
@@ -84,7 +58,7 @@ export const RequestItem = () => {
       } else {
         setError(err.response?.data?.message || err.message || 'Failed to fetch available items. Please try again.');
       }
-      setItems([]); // Reset items on error
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -93,13 +67,14 @@ export const RequestItem = () => {
   const fetchCategories = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:5000/api/categories', {
+      const response = await api.get('/api/categories', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setCategories(response.data);
     } catch (err) {
       console.error('Error fetching categories:', err);
       setError('Failed to fetch categories');
+      setCategories([]);
     }
   };
 
@@ -110,14 +85,24 @@ export const RequestItem = () => {
       [name]: value
     }));
 
-    // If item is selected, auto-fill unit and category
+    // Reset item selection when category changes
+    if (name === 'category') {
+      setFormData(prev => ({
+        ...prev,
+        category: value,
+        itemName: '',
+        unit: ''
+      }));
+    }
+
+    // If item is selected, auto-fill unit
     if (name === 'itemName') {
       const selectedItem = items.find(item => item.itemName === value);
       if (selectedItem) {
         setFormData(prev => ({
           ...prev,
           unit: selectedItem.unit,
-          category: selectedItem.category
+          itemName: value
         }));
       }
     }
@@ -131,7 +116,7 @@ export const RequestItem = () => {
 
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://localhost:5000/api/requests', formData, {
+      await api.post('/api/requests', formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -216,7 +201,7 @@ export const RequestItem = () => {
           // Submit each request
           const token = localStorage.getItem('token');
           await Promise.all(data.map(row => 
-            axios.post('http://localhost:5000/api/requests', row, {
+            api.post('/api/requests', row, {
               headers: { Authorization: `Bearer ${token}` }
             })
           ));
@@ -287,6 +272,26 @@ export const RequestItem = () => {
             <form onSubmit={handleFormSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Category
+                </label>
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a category</option>
+                  {categories.map(category => (
+                    <option key={category._id} value={category.name}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Item
                 </label>
                 <select
@@ -294,12 +299,16 @@ export const RequestItem = () => {
                   value={formData.itemName}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  disabled={!formData.category}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 >
                   <option value="">Select an item</option>
-                  {items.map(item => (
+                  {filteredItems.map(item => (
                     <option key={item._id} value={item.itemName}>
-                      {item.itemName} ({item.quantity} {item.unit} available)
+                      {item.itemName}
+                      {(userRole === 'Admin' || userRole === 'LogisticsOfficer') && 
+                        ` (${item.quantity} ${item.unit} available)`
+                      }
                     </option>
                   ))}
                 </select>
@@ -328,21 +337,6 @@ export const RequestItem = () => {
                   type="text"
                   name="unit"
                   value={formData.unit}
-                  onChange={handleInputChange}
-                  required
-                  readOnly
-                  className="w-full px-4 py-2 border rounded-lg bg-gray-50"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category
-                </label>
-                <input
-                  type="text"
-                  name="category"
-                  value={formData.category}
                   onChange={handleInputChange}
                   required
                   readOnly

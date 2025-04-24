@@ -1,22 +1,19 @@
 const mongoose = require('mongoose');
 
 const logSchema = new mongoose.Schema({
+  timestamp: {
+    type: Date,
+    required: true,
+    default: Date.now
+  },
   action: {
     type: String,
     required: true,
-    enum: [
-      'LOGIN',
-      'LOGOUT',
-      'CREATE_USER',
-      'UPDATE_USER_STATUS',
-      'UPDATE_USER_ROLE',
-      'CREATE_STOCK',
-      'UPDATE_STOCK',
-      'DELETE_STOCK',
-      'CREATE_REPAIR_REQUEST',
-      'UPDATE_REPAIR_STATUS',
-      'ADD_REPAIR_REMARK'
-    ]
+    enum: ['view', 'create', 'update', 'delete', 'other']
+  },
+  module: {
+    type: String,
+    required: true
   },
   details: {
     type: String,
@@ -27,30 +24,33 @@ const logSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  affectedUser: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+  userRole: {
+    type: String,
+    required: true
   },
-  affectedStock: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Stock'
+  ipAddress: {
+    type: String,
+    required: true
   },
-  affectedRepair: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'RepairRequest'
+  userAgent: {
+    type: String,
+    required: true
   },
-  timestamp: {
-    type: Date,
-    default: Date.now
-  },
-  ipAddress: String,
-  userAgent: String
+  metadata: {
+    body: Object,
+    params: Object,
+    query: Object,
+    response: Object
+  }
+}, {
+  timestamps: true
 });
 
 // Index for efficient querying
 logSchema.index({ timestamp: -1 });
-logSchema.index({ performedBy: 1, timestamp: -1 });
-logSchema.index({ action: 1, timestamp: -1 });
+logSchema.index({ performedBy: 1 });
+logSchema.index({ action: 1 });
+logSchema.index({ module: 1 });
 
 const Log = mongoose.model('Log', logSchema);
 

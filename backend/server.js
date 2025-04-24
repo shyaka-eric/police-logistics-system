@@ -293,24 +293,63 @@ const logActivity = async (req, res, next) => {
   res.on('finish', async () => {
     try {
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        console.log('📝 Creating log entry for:', {
-          method: req.method,
-          url: req.originalUrl,
-          userId: req.userId,
-          statusCode: res.statusCode
-        });
+        // Get user details for logging
+        const user = await User.findById(req.userId).select('name role email');
 
-        const action = req.method === 'POST' ? 'create' :
-          req.method === 'PUT' || req.method === 'PATCH' ? 'update' :
-          req.method === 'DELETE' ? 'delete' : 'other';
+        // Determine the module from the URL
+        let module = req.originalUrl.split('/')[2];
+        // Clean up module name
+        if (module && module.includes('?')) {
+          module = module.split('?')[0];
+        }
+        
+        // Determine action type and description
+        let action;
+        let details;
+        
+        switch (req.method) {
+          case 'GET':
+            action = 'view';
+            details = `Viewed ${module} data`;
+            break;
+          case 'POST':
+            action = 'create';
+            details = `Created new ${module} entry`;
+            break;
+          case 'PUT':
+          case 'PATCH':
+            action = 'update';
+            details = `Updated ${module} data`;
+            break;
+          case 'DELETE':
+            action = 'delete';
+            details = `Deleted ${module} entry`;
+            break;
+          default:
+            action = 'other';
+            details = `Performed ${req.method} operation on ${module}`;
+        }
 
-        const module = req.originalUrl.split('/')[2] || 'general';
+        // Add specific details based on the request
+        if (req.params.id) {
+          details += ` (ID: ${req.params.id})`;
+        }
+        if (req.query) {
+          const queryStr = Object.entries(req.query)
+            .map(([key, value]) => `${key}=${value}`)
+            .join(', ');
+          if (queryStr) {
+            details += ` with parameters: ${queryStr}`;
+          }
+        }
 
         const log = new Log({
+          timestamp: new Date(),
           action,
           module,
-          description: `${req.method} ${req.originalUrl}`,
+          details,
           performedBy: req.userId,
+          userRole: user?.role || 'Unknown',
           ipAddress: req.ip || 'unknown',
           userAgent: req.get('user-agent') || 'unknown',
           metadata: {
@@ -326,7 +365,8 @@ const logActivity = async (req, res, next) => {
           id: log._id,
           action,
           module,
-          userId: req.userId
+          userId: req.userId,
+          role: user?.role
         });
       } else {
         console.log('⚠️ Skipping log for non-successful request:', {
@@ -341,8 +381,12 @@ const logActivity = async (req, res, next) => {
   });
 };
 
+// Apply logging middleware to all protected routes
+app.use('/api', verifyToken, logActivity);
+
 // Protected routes
-app.use('/api/users', verifyToken, userRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/auth', authRoutes);
 
 // Routes
 app.get('/api/user/current', verifyToken, async (req, res) => {
@@ -1691,7 +1735,7 @@ app.get('/api/stock/issued', verifyToken, async (req, res) => {
   }
 });
 
-app.get('/api/logs', verifyToken, checkRole(['SystemAdmin', 'Admin']), async (req, res) => {
+app.get('/api/logs', verifyToken, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -1700,10 +1744,10 @@ app.get('/api/logs', verifyToken, checkRole(['SystemAdmin', 'Admin']), async (re
     let query = {};
 
     // Apply filters
-    if (req.query.module && req.query.module !== '') {
+    if (req.query.module && req.query.module !== 'All Modules') {
       query.module = req.query.module;
     }
-    if (req.query.action && req.query.action !== '') {
+    if (req.query.action && req.query.action !== 'All Actions') {
       query.action = req.query.action;
     }
     if (req.query.startDate && req.query.endDate) {
@@ -1715,7 +1759,6 @@ app.get('/api/logs', verifyToken, checkRole(['SystemAdmin', 'Admin']), async (re
     if (req.query.search) {
       query.$or = [
         { details: { $regex: req.query.search, $options: 'i' } },
-        { action: { $regex: req.query.search, $options: 'i' } },
         { module: { $regex: req.query.search, $options: 'i' } }
       ];
     }
@@ -1725,14 +1768,19 @@ app.get('/api/logs', verifyToken, checkRole(['SystemAdmin', 'Admin']), async (re
         .sort({ timestamp: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('performedBy', 'name')
-        .populate('affectedUser', 'name')
+        .populate('performedBy', 'name role')
         .lean(),
       Log.countDocuments(query)
     ]);
 
+    // Transform logs to include user role
+    const transformedLogs = logs.map(log => ({
+      ...log,
+      userRole: log.performedBy?.role || 'Unknown'
+    }));
+
     res.json({
-      logs,
+      logs: transformedLogs,
       total,
       page,
       totalPages: Math.ceil(total / limit)
@@ -1743,15 +1791,15 @@ app.get('/api/logs', verifyToken, checkRole(['SystemAdmin', 'Admin']), async (re
   }
 });
 
-app.get('/api/logs/export', verifyToken, checkRole(['SystemAdmin', 'Admin']), async (req, res) => {
+app.get('/api/logs/export', verifyToken, async (req, res) => {
   try {
     let query = {};
 
     // Apply filters
-    if (req.query.module && req.query.module !== '') {
+    if (req.query.module && req.query.module !== 'All Modules') {
       query.module = req.query.module;
     }
-    if (req.query.action && req.query.action !== '') {
+    if (req.query.action && req.query.action !== 'All Actions') {
       query.action = req.query.action;
     }
     if (req.query.startDate && req.query.endDate) {
@@ -1760,31 +1808,27 @@ app.get('/api/logs/export', verifyToken, checkRole(['SystemAdmin', 'Admin']), as
         $lte: new Date(req.query.endDate)
       };
     }
-    if (req.query.search) {
-      query.$or = [
-        { details: { $regex: req.query.search, $options: 'i' } },
-        { action: { $regex: req.query.search, $options: 'i' } },
-        { module: { $regex: req.query.search, $options: 'i' } }
-      ];
-    }
 
     const logs = await Log.find(query)
       .sort({ timestamp: -1 })
-      .populate('performedBy', 'name')
-      .populate('affectedUser', 'name')
+      .populate('performedBy', 'name role')
       .lean();
 
-    const fields = ['timestamp', 'action', 'module', 'details', 'performedBy.name', 'ipAddress', 'userAgent'];
-    const opts = { fields };
-
-    const csv = json2csv(logs.map(log => ({
-      ...log,
+    const transformedLogs = logs.map(log => ({
       timestamp: new Date(log.timestamp).toLocaleString(),
-      'performedBy.name': log.performedBy?.name || 'System'
-    })));
+      action: log.action,
+      module: log.module,
+      details: log.details,
+      user: log.performedBy?.name || 'System',
+      role: log.performedBy?.role || 'Unknown',
+      ipAddress: log.ipAddress
+    }));
+
+    const fields = ['timestamp', 'action', 'module', 'details', 'user', 'role', 'ipAddress'];
+    const csv = json2csv(transformedLogs, { fields });
 
     res.header('Content-Type', 'text/csv');
-    res.attachment('system-logs.csv');
+    res.attachment(`system-logs-${new Date().toISOString().split('T')[0]}.csv`);
     res.send(csv);
   } catch (error) {
     console.error('Error exporting logs:', error);
