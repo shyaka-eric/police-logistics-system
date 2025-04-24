@@ -94,65 +94,8 @@ export const Dashboard = () => {
           color="bg-red-500"
         />
       </div>
-
-      {/* Role-specific content */}
-      {user?.role === 'UnitLeader' && (
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <a
-              href="/request-item"
-              className="p-4 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
-            >
-              <h3 className="font-semibold mb-2">Request New Item</h3>
-              <p className="text-gray-600">Submit a new item request</p>
-            </a>
-            <a
-              href="/track-items"
-              className="p-4 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
-            >
-              <h3 className="font-semibold mb-2">Track Items</h3>
-              <p className="text-gray-600">View your current items</p>
-            </a>
-            <a
-              href="/request-repair"
-              className="p-4 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
-            >
-              <h3 className="font-semibold mb-2">Request Repair</h3>
-              <p className="text-gray-600">Submit repair requests</p>
-            </a>
-          </div>
-        </div>
-      )}
-
-      {user?.role === 'Admin' && (
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Administrative Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <a
-              href="/assess-requests"
-              className="p-4 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
-            >
-              <h3 className="font-semibold mb-2">Assess Requests</h3>
-              <p className="text-gray-600">Review pending requests</p>
-            </a>
-            <a
-              href="/stock-availability"
-              className="p-4 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
-            >
-              <h3 className="font-semibold mb-2">Stock Status</h3>
-              <p className="text-gray-600">Check stock availability</p>
-            </a>
-            <a
-              href="/view-reports"
-              className="p-4 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow"
-            >
-              <h3 className="font-semibold mb-2">Reports</h3>
-              <p className="text-gray-600">View system reports</p>
-            </a>
-          </div>
-        </div>
-      )}
     </div>
   );
-}; 
+};
+
+export default Dashboard; 

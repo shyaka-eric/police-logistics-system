@@ -1,162 +1,124 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { FaBox, FaClipboardList, FaChartBar, FaTools } from 'react-icons/fa';
-import Sidebar from "./components/Sidebar";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { Sidebar } from "./components/Sidebar";
+import { SystemLogs } from "./components/SystemLogs";
+import { RequestItem } from "./components/RequestItem";
+import { TrackItems } from "./components/TrackItems";
+import { RequestRepair } from "./components/RequestRepair";
+import AssessRequests from "./components/AssessRequests";
+import { ManageRepairs } from "./components/ManageRepairs";
+import ManageUsers from "./components/ManageUsers";
+import ViewReports from "./components/ViewReports";
+import StockManagement from "./components/StockManagement";
+import ApprovedRequests from "./components/ApprovedRequests";
+import IssueItems from "./components/IssueItems";
+import StockAvailability from "./components/StockAvailability";
+import ManageApprovals from "./components/ManageApprovals";
+import MyRequests from "./components/MyRequests";
+import { AssessRepairRequests } from "./components/AssessRepairRequests";
+
+const DashboardHome = () => {
+  const user = JSON.parse(localStorage.getItem('user'));
+
+  return (
+    <div className="p-8">
+      {/* Header with user info */}
+      <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+        <div className="flex items-center">
+          <h1 className="text-2xl font-semibold">
+            User, {user?.name} <span role="img" aria-label="party">🎉</span>
+          </h1>
+          <div className="ml-4 text-gray-600">
+            Role: {user?.role}
+          </div>
+        </div>
+      </div>
+
+      {/* Statistics Grid */}
+      <div className="grid grid-cols-2 gap-6 mb-8">
+        {/* Total Orders */}
+        <div className="bg-blue-500 text-white rounded-lg p-6">
+          <h2 className="text-xl mb-4">Total Orders</h2>
+          <div className="text-4xl font-bold">120</div>
+        </div>
+
+        {/* Pending Requests */}
+        <div className="bg-yellow-500 text-white rounded-lg p-6">
+          <h2 className="text-xl mb-4">Pending Requests</h2>
+          <div className="text-4xl font-bold">8</div>
+        </div>
+
+        {/* Completed Deliveries */}
+        <div className="bg-green-500 text-white rounded-lg p-6">
+          <h2 className="text-xl mb-4">Completed Deliveries</h2>
+          <div className="text-4xl font-bold">95</div>
+        </div>
+
+        {/* Total Users */}
+        <div className="bg-purple-500 text-white rounded-lg p-6">
+          <h2 className="text-xl mb-4">Total Users</h2>
+          <div className="text-4xl font-bold">500</div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Dashboard = () => {
   const user = JSON.parse(localStorage.getItem('user'));
 
-  const renderLogisticsOfficerOptions = () => (
-    <div className="mt-8">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Quick Access</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Link to="/approved-requests" 
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
-          <div className="flex items-center text-cyan-600 mb-3">
-            <FaClipboardList className="text-xl" />
-            <h3 className="text-lg font-semibold ml-2">Process Requests</h3>
-          </div>
-          <p className="text-gray-600">View and fulfill approved requests</p>
-        </Link>
-
-        <Link to="/stock-management" 
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
-          <div className="flex items-center text-cyan-600 mb-3">
-            <FaBox className="text-xl" />
-            <h3 className="text-lg font-semibold ml-2">Manage Stock</h3>
-          </div>
-          <p className="text-gray-600">Update and track inventory levels</p>
-        </Link>
-
-        <Link to="/reports" 
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
-          <div className="flex items-center text-cyan-600 mb-3">
-            <FaChartBar className="text-xl" />
-            <h3 className="text-lg font-semibold ml-2">View Reports</h3>
-          </div>
-          <p className="text-gray-600">Access inventory reports and analytics</p>
-        </Link>
-      </div>
-    </div>
-  );
-
-  const renderUnitLeaderOptions = () => (
-    <div className="mt-8">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Quick Access</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Link to="/request-form" 
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
-          <div className="flex items-center text-cyan-600 mb-3">
-            <FaClipboardList className="text-xl" />
-            <h3 className="text-lg font-semibold ml-2">Make Request</h3>
-          </div>
-          <p className="text-gray-600">Submit new item requests</p>
-        </Link>
-
-        <Link to="/my-requests" 
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
-          <div className="flex items-center text-cyan-600 mb-3">
-            <FaBox className="text-xl" />
-            <h3 className="text-lg font-semibold ml-2">My Requests</h3>
-          </div>
-          <p className="text-gray-600">View your request history</p>
-        </Link>
-      </div>
-    </div>
-  );
-
-  const renderAdminOptions = () => (
-    <div className="mt-8">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Quick Access</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Link to="/assess-requests" 
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
-          <div className="flex items-center text-cyan-600 mb-3">
-            <FaClipboardList className="text-xl" />
-            <h3 className="text-lg font-semibold ml-2">Assess Requests</h3>
-          </div>
-          <p className="text-gray-600">Review and process pending requests</p>
-        </Link>
-
-        <Link to="/stock-management" 
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
-          <div className="flex items-center text-cyan-600 mb-3">
-            <FaBox className="text-xl" />
-            <h3 className="text-lg font-semibold ml-2">Stock Management</h3>
-          </div>
-          <p className="text-gray-600">Monitor and manage inventory</p>
-        </Link>
-
-        <Link to="/reports" 
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-duration-150">
-          <div className="flex items-center text-cyan-600 mb-3">
-            <FaChartBar className="text-xl" />
-            <h3 className="text-lg font-semibold ml-2">Reports</h3>
-          </div>
-          <p className="text-gray-600">View system reports and analytics</p>
-        </Link>
-      </div>
-    </div>
-  );
-
-  const renderRoleOptions = () => {
-    switch (user?.role) {
-      case 'LogisticsOfficer':
-        return renderLogisticsOfficerOptions();
-      case 'UnitLeader':
-        return renderUnitLeaderOptions();
-      case 'Admin':
-        return renderAdminOptions();
-      default:
-        return null;
-    }
-  };
-
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
-      <div className="flex-1 p-8">
-        {/* Header with user info */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-          <div className="flex items-center">
-            <h1 className="text-2xl font-semibold">
-              User, {user?.name} <span role="img" aria-label="party">🎉</span>
-            </h1>
-            <div className="ml-4 text-gray-600">
-              Role: {user?.role}
-            </div>
-          </div>
-        </div>
-
-        {/* Statistics Grid */}
-        <div className="grid grid-cols-2 gap-6 mb-8">
-          {/* Total Orders */}
-          <div className="bg-blue-500 text-white rounded-lg p-6">
-            <h2 className="text-xl mb-4">Total Orders</h2>
-            <div className="text-4xl font-bold">120</div>
-          </div>
-
-          {/* Pending Requests */}
-          <div className="bg-yellow-500 text-white rounded-lg p-6">
-            <h2 className="text-xl mb-4">Pending Requests</h2>
-            <div className="text-4xl font-bold">8</div>
-          </div>
-
-          {/* Completed Deliveries */}
-          <div className="bg-green-500 text-white rounded-lg p-6">
-            <h2 className="text-xl mb-4">Completed Deliveries</h2>
-            <div className="text-4xl font-bold">95</div>
-          </div>
-
-          {/* Total Users */}
-          <div className="bg-purple-500 text-white rounded-lg p-6">
-            <h2 className="text-xl mb-4">Total Users</h2>
-            <div className="text-4xl font-bold">500</div>
-          </div>
-        </div>
-
-        {/* Role-specific Quick Access Options */}
-        {renderRoleOptions()}
+      <div className="flex-1 overflow-auto">
+        <Routes>
+          <Route index element={<DashboardHome />} />
+          
+          {/* System Admin Routes */}
+          {user?.role === 'SystemAdmin' && (
+            <>
+              <Route path="system-logs" element={<SystemLogs />} />
+              <Route path="manage-users" element={<ManageUsers />} />
+              <Route path="stock-management" element={<StockManagement />} />
+              <Route path="view-reports" element={<ViewReports />} />
+            </>
+          )}
+          
+          {/* Admin Routes */}
+          {['Admin', 'SystemAdmin'].includes(user?.role) && (
+            <>
+              <Route path="assess-requests" element={<AssessRequests />} />
+              <Route path="assess-repair-requests" element={<AssessRepairRequests />} />
+              <Route path="stock-availability" element={<StockAvailability />} />
+              <Route path="manage-approvals" element={<ManageApprovals />} />
+              <Route path="view-reports" element={<ViewReports />} />
+            </>
+          )}
+          
+          {/* Logistics Officer Routes */}
+          {user?.role === 'LogisticsOfficer' && (
+            <>
+              <Route path="approved-requests" element={<ApprovedRequests />} />
+              <Route path="stock-management" element={<StockManagement />} />
+              <Route path="issue-items" element={<IssueItems />} />
+            </>
+          )}
+          
+          {/* Unit Leader Routes */}
+          {user?.role === 'UnitLeader' && (
+            <>
+              <Route path="request-item" element={<RequestItem />} />
+              <Route path="track-items" element={<TrackItems />} />
+              <Route path="request-repair" element={<RequestRepair />} />
+              <Route path="my-requests" element={<MyRequests />} />
+            </>
+          )}
+          
+          {/* Shared Routes */}
+          {['Admin', 'LogisticsOfficer', 'UnitLeader'].includes(user?.role) && (
+            <Route path="manage-repairs" element={<ManageRepairs />} />
+          )}
+        </Routes>
       </div>
     </div>
   );

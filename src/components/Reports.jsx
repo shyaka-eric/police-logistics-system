@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Bar } from "react-chartjs-2";
 import { Chart, registerables } from "chart.js";
-import Sidebar from "./Sidebar";
 
 // Register Chart.js components
 Chart.register(...registerables);
@@ -64,30 +63,24 @@ const Reports = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
-      <Sidebar />
+    <div className="flex-1 p-6">
+      <div className="bg-white p-4 shadow-md flex justify-between items-center rounded-lg">
+        <h1 className="text-2xl font-semibold text-gray-700">
+          {user ? `User, ${user.name} 🎉` : "Welcome!"}
+        </h1>
+        <p className="text-gray-600">{user ? `Role: ${user.role}` : "Loading..."}</p>
+      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 p-6">
-        <div className="bg-white p-4 shadow-md flex justify-between items-center rounded-lg">
-          <h1 className="text-2xl font-semibold text-gray-700">
-            {user ? `User, ${user.name} 🎉` : "Welcome!"}
-          </h1>
-          <p className="text-gray-600">{user ? `Role: ${user.role}` : "Loading..."}</p>
-        </div>
-
-        <div className="p-6 bg-white shadow-md rounded-lg mt-3">
-          <h2 className="text-2xl font-semibold mb-4">Reports & Analytics</h2>
-          <div className="h-64"> {/* ✅ Set a max height */}
-            {loading ? (
-              <p className="text-gray-500">Loading data...</p>
-            ) : reportData.length > 0 ? (
-              <Bar data={chartData} options={chartOptions} />
-            ) : (
-              <p className="text-gray-500">No data available</p>
-            )}
-          </div>
+      <div className="p-6 bg-white shadow-md rounded-lg mt-3">
+        <h2 className="text-2xl font-semibold mb-4">Reports & Analytics</h2>
+        <div className="h-64">
+          {loading ? (
+            <p className="text-gray-500">Loading data...</p>
+          ) : reportData.length > 0 ? (
+            <Bar data={chartData} options={chartOptions} />
+          ) : (
+            <p className="text-gray-500">No data available</p>
+          )}
         </div>
       </div>
     </div>

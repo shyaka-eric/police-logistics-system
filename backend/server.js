@@ -4,10 +4,51 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const XLSX = require('xlsx');
-const fileUpload = require('express-fileupload');
 const userRoutes = require('./routes/users');
 const User = require('./models/User');  // Import User model
-require('dotenv').config();
+const Issuance = require('./models/Issuance'); // Import Issuance model
+const Log = require('./models/Log');
+const json2csv = require('json2csv').parse;
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const fileUpload = require('express-fileupload');
+const authRoutes = require('./routes/auth');
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow images and Excel files
+    if (
+      file.mimetype.startsWith('image/') || 
+      file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.mimetype === 'application/vnd.ms-excel'
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image and Excel files are allowed'));
+    }
+  }
+});
+
+// Create uploads directory if it doesn't exist
+if (!fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads');
+}
 
 const app = express();
 
@@ -16,19 +57,21 @@ app.use(cors());
 app.use(express.json());
 app.use(fileUpload({
   createParentPath: true,
-  limits: { 
-    fileSize: 5 * 1024 * 1024 // 5MB max file size
-  },
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   abortOnLimit: true
 }));
+app.use('/uploads', express.static('uploads')); // Serve uploaded files
 
 // MongoDB Connection
 mongoose.connect('mongodb://localhost:27017/logistics', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log('Connected to MongoDB'))
-.catch(err => console.error('MongoDB connection error:', err));
+.then(() => console.log('✅ Connected to MongoDB'))
+.catch(err => console.error('❌ MongoDB connection error:', err));
+
+// Auth routes (unprotected)
+app.use('/api/auth', authRoutes);
 
 // Request Schema
 const requestSchema = new mongoose.Schema({
@@ -102,8 +145,13 @@ const notificationSchema = new mongoose.Schema({
 
 // Repair Request Schema
 const repairRequestSchema = new mongoose.Schema({
-  itemName: { type: String, required: true },
-  issue: { type: String, required: true },
+  location: { type: String, required: true },
+  priority: { 
+    type: String, 
+    enum: ['low', 'medium', 'high', 'urgent'],
+    required: true 
+  },
+  photoUrl: { type: String, required: true },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected', 'completed'],
@@ -115,80 +163,98 @@ const repairRequestSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+// Under Repair Schema
+const underRepairSchema = new mongoose.Schema({
+  repairRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'RepairRequest', required: true },
+  location: { type: String, required: true },
+  priority: { 
+    type: String, 
+    enum: ['low', 'medium', 'high', 'urgent'],
+    required: true 
+  },
+  photoUrl: { type: String, required: true },
+  requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  status: {
+    type: String,
+    enum: ['pending', 'in_progress', 'completed', 'cancelled'],
+    default: 'pending'
+  },
+  remarks: String,
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
 const Request = mongoose.model('Request', requestSchema);
 const Stock = mongoose.model('Stock', stockSchema);
 const Category = mongoose.model('Category', categorySchema);
 const Notification = mongoose.model('Notification', notificationSchema);
 const RepairRequest = mongoose.model('RepairRequest', repairRequestSchema);
-const Issuance = require('./models/Issuance');
+const UnderRepair = mongoose.model('UnderRepair', underRepairSchema);
 
-// Middleware to verify JWT token
+// JWT verification middleware for protected routes
 const verifyToken = async (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) {
-    return res.status(401).json({ message: 'No token provided' });
-  }
-
   try {
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      console.log('❌ No token provided');
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     req.userId = decoded.userId;
     
-    // Fetch user data and attach to request
-    const user = await User.findById(decoded.userId);
+    // Fetch user and attach to request
+    const user = await User.findById(decoded.userId).select('-password');
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
-
-    // Check if user is active
-    if (user.status === 'inactive') {
-      return res.status(403).json({ 
-        message: 'Your account has been deactivated. Please contact your system administrator.',
-        status: 'inactive',
-        isDeactivated: true
-      });
-    }
-    
     req.user = user;
+    
     next();
   } catch (error) {
-    return res.status(401).json({ message: 'Invalid token' });
+    console.error('❌ Token verification failed:', error.message);
+    res.status(401).json({ message: 'Invalid token' });
   }
 };
 
-// Middleware for role-based access control
+// Middleware to check user role
 const checkRole = (allowedRoles) => {
-  return async (req, res, next) => {
-    try {
-      // Debug logging
-      console.log('Role Check Debug:', {
-        userRole: req.user.role,
-        allowedRoles,
+  return (req, res, next) => {
+    console.log('Role check details:', {
+      userRole: req.user.role,
+      allowedRoles,
+      endpoint: req.originalUrl,
+      method: req.method,
+      userId: req.user._id,
+      userRoleLowerCase: req.user.role.toLowerCase(),
+      allowedRolesLowerCase: allowedRoles.map(r => r.toLowerCase())
+    });
+
+    // Normalize roles for comparison (handle 'UnitLeader' vs 'Unitleader' vs 'unitLeader' etc)
+    const userRole = req.user.role.toLowerCase();
+    const normalizedAllowedRoles = allowedRoles.map(role => role.toLowerCase());
+
+    if (!normalizedAllowedRoles.includes(userRole)) {
+      console.log('Access denied details:', {
+        userRole,
+        normalizedAllowedRoles,
         endpoint: req.originalUrl,
-        method: req.method,
-        userId: req.user._id
+        matches: normalizedAllowedRoles.includes(userRole)
       });
-
-      // Convert both to same case for comparison
-      const userRole = req.user.role.trim();
-      const normalizedAllowedRoles = allowedRoles.map(role => role.trim());
-
-      if (!normalizedAllowedRoles.includes(userRole)) {
-        console.log('Access Denied:', {
-          userRole,
-          allowedRoles: normalizedAllowedRoles,
-          matches: normalizedAllowedRoles.includes(userRole)
-        });
-        return res.status(403).json({
-          message: `Access denied. This action is only allowed for ${allowedRoles.join(' or ')} roles.`,
-          userRole: userRole,
-          requiredRoles: allowedRoles
-        });
-      }
-      next();
-    } catch (error) {
-      console.error('Role check error:', error);
-      res.status(500).json({ message: 'Error checking permissions', error: error.message });
+      return res.status(403).json({ 
+        message: 'Access denied. Insufficient permissions.',
+        debug: {
+          userRole: req.user.role,
+          allowedRoles,
+          normalized: {
+            userRole,
+            allowedRoles: normalizedAllowedRoles
+          }
+        }
+      });
     }
+    next();
   };
 };
 
@@ -198,111 +264,87 @@ const isLogisticsOfficer = checkRole(['LogisticsOfficer']);
 const isSystemAdmin = checkRole(['SystemAdmin']);
 const isUnitLeader = checkRole(['UnitLeader']);
 
+// Logging middleware
+const logActivity = async (req, res, next) => {
+  console.log('🔍 Logging middleware triggered for:', req.method, req.originalUrl);
+
+  // Create a copy of the original methods
+  const originalJson = res.json;
+  const originalSend = res.send;
+  const originalEnd = res.end;
+  let responseBody;
+
+  // Override json method
+  res.json = function (data) {
+    responseBody = data;
+    return originalJson.call(this, data);
+  };
+
+  // Override send method
+  res.send = function (data) {
+    responseBody = data;
+    return originalSend.call(this, data);
+  };
+
+  // Call next first to let the request complete
+  next();
+
+  // After response is sent, create the log
+  res.on('finish', async () => {
+    try {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        console.log('📝 Creating log entry for:', {
+          method: req.method,
+          url: req.originalUrl,
+          userId: req.userId,
+          statusCode: res.statusCode
+        });
+
+        const action = req.method === 'POST' ? 'create' :
+          req.method === 'PUT' || req.method === 'PATCH' ? 'update' :
+          req.method === 'DELETE' ? 'delete' : 'other';
+
+        const module = req.originalUrl.split('/')[2] || 'general';
+
+        const log = new Log({
+          action,
+          module,
+          description: `${req.method} ${req.originalUrl}`,
+          performedBy: req.userId,
+          ipAddress: req.ip || 'unknown',
+          userAgent: req.get('user-agent') || 'unknown',
+          metadata: {
+            body: req.body,
+            params: req.params,
+            query: req.query,
+            response: responseBody
+          }
+        });
+
+        await log.save();
+        console.log('✅ Log entry created:', {
+          id: log._id,
+          action,
+          module,
+          userId: req.userId
+        });
+      } else {
+        console.log('⚠️ Skipping log for non-successful request:', {
+          method: req.method,
+          url: req.originalUrl,
+          statusCode: res.statusCode
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error creating log:', error);
+    }
+  });
+};
+
+// Protected routes
+app.use('/api/users', verifyToken, userRoutes);
+
 // Routes
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { name, email, password, role } = req.body;
-    console.log('Registration attempt:', { name, email, role }); // Debug log
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ $or: [{ email }, { username: email }] });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
-
-    // Check if this is the first user (allow them to be SystemAdmin)
-    const userCount = await User.countDocuments();
-    const isFirstUser = userCount === 0;
-    const assignedRole = isFirstUser ? 'SystemAdmin' : (role || 'UnitLeader');
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create new user
-    const user = new User({
-      username: email, // Use email as username for simplicity
-      name,
-      email,
-      password: hashedPassword,
-      role: assignedRole
-    });
-
-    await user.save();
-    console.log('User created:', { id: user._id, role: user.role }); // Debug log
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '24h' }
-    );
-
-    res.status(201).json({
-      message: 'User created successfully',
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      },
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ message: 'Error creating user', error: error.message });
-  }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    // Find user
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    // Check if user is active - MUST check before password validation
-    if (user.status === 'inactive') {
-      return res.status(403).json({ 
-        message: 'Your account has been deactivated. Please contact your system administrator.',
-        status: 'inactive'
-      });
-    }
-
-    // Check password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '24h' }
-    );
-
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status
-      },
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ message: 'Error logging in', error: error.message });
-  }
-});
-
-// Add this after the auth routes
 app.get('/api/user/current', verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.userId).select('-password');
@@ -323,7 +365,6 @@ app.get('/api/user/current', verifyToken, async (req, res) => {
   }
 });
 
-// Request Routes
 app.post('/api/requests', verifyToken, async (req, res) => {
   try {
     const { itemName, quantity, unit, purpose, priority } = req.body;
@@ -352,7 +393,7 @@ app.post('/api/requests', verifyToken, async (req, res) => {
 app.get('/api/requests', verifyToken, async (req, res) => {
   try {
     const requests = await Request.find()
-      .populate('requestedBy', 'name email role')
+      .populate('requestedBy', 'name email')
       .sort({ createdAt: -1 });
     
     console.log('Sending requests:', requests.length);
@@ -366,7 +407,7 @@ app.get('/api/requests', verifyToken, async (req, res) => {
 app.get('/api/user/requests', verifyToken, async (req, res) => {
   try {
     const requests = await Request.find({ requestedBy: req.userId })
-      .populate('requestedBy', 'name email role')
+      .populate('requestedBy', 'name email')
       .sort({ createdAt: -1 });
     
     res.json(requests);
@@ -376,7 +417,6 @@ app.get('/api/user/requests', verifyToken, async (req, res) => {
   }
 });
 
-// Add this after the other request routes
 app.get('/api/requests/check/:id', verifyToken, async (req, res) => {
   try {
     const requestId = req.params.id;
@@ -411,7 +451,6 @@ app.get('/api/requests/check/:id', verifyToken, async (req, res) => {
   }
 });
 
-// Update request status
 app.put('/api/requests/:id', verifyToken, async (req, res) => {
   try {
     const { status, adminRemark } = req.body;
@@ -446,6 +485,7 @@ app.put('/api/requests/:id', verifyToken, async (req, res) => {
       requestedStatus: status
     });
 
+    // Check if user is LogisticsOfficer
     if (req.user.role === 'LogisticsOfficer') {
       if (status !== 'completed') {
         return res.status(403).json({ 
@@ -461,43 +501,57 @@ app.put('/api/requests/:id', verifyToken, async (req, res) => {
           currentStatus: request.status
         });
       }
-    } else if (req.user.role === 'Admin') {
+    } 
+    // Check if user is Admin
+    else if (req.user.role === 'Admin') {
       if (!['approved', 'rejected'].includes(status)) {
         return res.status(403).json({ 
           message: 'Admins can only approve or reject requests',
           attemptedStatus: status
         });
       }
-    } else {
+    } 
+    // Deny access for other roles
+    else {
       return res.status(403).json({ 
         message: 'You do not have permission to update requests',
         userRole: req.user.role
       });
     }
 
-    // Create notification for status change
-    const notification = new Notification({
-      userId: request.requestedBy._id,
-      message: `Your request for ${request.itemName} has been ${status}${adminRemark ? `: ${adminRemark}` : ''}`
-    });
-    await notification.save();
-
-    // Update request status
-    request.status = status;
-    if (adminRemark) {
-      request.adminRemark = adminRemark;
-    }
-    
     // If request is being completed, update stock
     if (status === 'completed') {
+      // Find the stock item by exact itemName match
       const stock = await Stock.findOne({ itemName: request.itemName });
+      console.log('Found stock item:', stock);
+
       if (!stock) {
-        return res.status(400).json({ error: 'Stock item not found' });
+        return res.status(400).json({ 
+          message: 'Stock item not found',
+          itemName: request.itemName
+        });
+      }
+
+      // Check if there's enough stock
+      if (stock.quantity < request.quantity) {
+        return res.status(400).json({ 
+          message: 'Insufficient stock quantity',
+          available: stock.quantity,
+          requested: request.quantity
+        });
       }
 
       // Update stock quantity
       stock.quantity -= request.quantity;
+      stock.lastUpdated = new Date();
+      stock.updatedBy = req.user._id;
       await stock.save();
+
+      console.log('Updated stock:', {
+        itemName: stock.itemName,
+        newQuantity: stock.quantity,
+        deducted: request.quantity
+      });
 
       // Create issuance record
       const issuance = new Issuance({
@@ -507,12 +561,39 @@ app.put('/api/requests/:id', verifyToken, async (req, res) => {
         issuedTo: request.requestedBy._id,
         issuedBy: req.user._id,
         purpose: request.purpose,
-        remarks: adminRemark || ''
+        remarks: adminRemark || 'Completed by Logistics Officer',
+        status: 'completed'  // Set status as completed
       });
       await issuance.save();
+
+      // Update any existing issuance records for this item and user to completed
+      await Issuance.updateMany(
+        {
+          'item': stock._id,
+          'issuedTo': request.requestedBy._id,
+          'status': 'in-use'
+        },
+        {
+          $set: { status: 'completed' }
+        }
+      );
+
+      console.log('Created issuance record:', issuance);
     }
 
+    // Update request status
+    request.status = status;
+    if (adminRemark) {
+      request.adminRemark = adminRemark;
+    }
     await request.save();
+
+    // Create notification for status change
+    const notification = new Notification({
+      userId: request.requestedBy._id,
+      message: `Your request for ${request.itemName} has been ${status}${adminRemark ? `: ${adminRemark}` : ''}`
+    });
+    await notification.save();
 
     // Populate the updated request with requester details
     const updatedRequest = await Request.findById(request._id)
@@ -527,11 +608,14 @@ app.put('/api/requests/:id', verifyToken, async (req, res) => {
     res.json(updatedRequest);
   } catch (error) {
     console.error('Error updating request:', error);
-    res.status(500).json({ message: 'Error updating request', error: error.message });
+    res.status(500).json({ 
+      message: 'Error updating request', 
+      error: error.message,
+      stack: error.stack 
+    });
   }
 });
 
-// User Management Routes (Protected for System Admin)
 app.get('/api/users', verifyToken, isSystemAdmin, async (req, res) => {
   try {
     const users = await User.find().select('-password');
@@ -633,9 +717,12 @@ app.delete('/api/users/:id', verifyToken, isSystemAdmin, async (req, res) => {
   }
 });
 
-// Stock Management Routes - Viewable by Admin and Logistics Officer
-app.get('/api/stock', verifyToken, checkRole(['LogisticsOfficer', 'Admin']), async (req, res) => {
+app.get('/api/stock', verifyToken, checkRole(['LogisticsOfficer', 'Admin', 'UnitLeader']), async (req, res) => {
   try {
+    console.log('Fetching stock items for user:', {
+      userId: req.user._id,
+      userRole: req.user.role
+    });
     const stocks = await Stock.find()
       .populate('updatedBy', 'name email')
       .sort({ itemName: 1 });
@@ -646,7 +733,6 @@ app.get('/api/stock', verifyToken, checkRole(['LogisticsOfficer', 'Admin']), asy
   }
 });
 
-// Add new stock item - Logistics Officer only
 app.post('/api/stock', verifyToken, isLogisticsOfficer, async (req, res) => {
   try {
     console.log('Creating stock item:', {
@@ -684,7 +770,6 @@ app.post('/api/stock', verifyToken, isLogisticsOfficer, async (req, res) => {
   }
 });
 
-// Update stock item - Logistics Officer only
 app.put('/api/stock/:id', verifyToken, isLogisticsOfficer, async (req, res) => {
   try {
     console.log('Updating stock item:', {
@@ -739,7 +824,6 @@ app.put('/api/stock/:id', verifyToken, isLogisticsOfficer, async (req, res) => {
   }
 });
 
-// Delete stock item - Logistics Officer only
 app.delete('/api/stock/:id', verifyToken, isLogisticsOfficer, async (req, res) => {
   try {
     console.log('Deleting stock item:', {
@@ -765,7 +849,6 @@ app.delete('/api/stock/:id', verifyToken, isLogisticsOfficer, async (req, res) =
   }
 });
 
-// Imports Routes
 app.post('/api/imports/stock', verifyToken, isLogisticsOfficer, async (req, res) => {
   try {
     console.log('📊 Processing Excel import request');
@@ -800,29 +883,66 @@ app.post('/api/imports/stock', verifyToken, isLogisticsOfficer, async (req, res)
     const results = [];
     for (const row of data) {
       try {
+        // Log the row being processed
+        console.log('Processing row:', row);
+
+        // Map Excel columns to stock fields
+        const stockData = {
+          itemName: row['Item Name'] || row.itemName,
+          category: row['Category'] || row.category,
+          quantity: Number(row['Quantity'] || row.quantity),
+          unit: row['Unit'] || row.unit,
+          minQuantity: Number(row['Minimum Quantity'] || row.minQuantity || 10),
+          location: row['Location'] || row.location || 'Default Location',
+          description: row['Description'] || row.description || '',
+          expirationDate: row['Expiration Date (YYYY-MM-DD)'] || row.expirationDate ? new Date(row['Expiration Date (YYYY-MM-DD)'] || row.expirationDate) : null
+        };
+
         // Validate required fields
-        if (!row.itemName || !row.category || !row.quantity || !row.unit || !row.location) {
-          console.log('❌ Missing required fields in row:', row);
-          results.push({ success: false, row, error: 'Missing required fields' });
+        if (!stockData.itemName || !stockData.category || !stockData.quantity || !stockData.unit) {
+          console.log('❌ Missing required fields in row:', stockData);
+          results.push({ success: false, row: stockData, error: 'Missing required fields' });
           continue;
         }
 
-        // Create new stock item
-        const stock = new Stock({
-          itemName: row.itemName,
-          category: row.category,
-          quantity: Number(row.quantity),
-          unit: row.unit,
-          minQuantity: Number(row.minQuantity) || 10,
-          location: row.location,
-          description: row.description || '',
-          expirationDate: row.expirationDate ? new Date(row.expirationDate) : null,
-          updatedBy: req.userId
-        });
+        // Check if item exists
+        const existingItem = await Stock.findOne({ itemName: stockData.itemName });
+        
+        if (existingItem) {
+          // Update existing item
+          const updatedItem = await Stock.findByIdAndUpdate(
+            existingItem._id,
+            {
+              category: stockData.category,
+              quantity: stockData.quantity,
+              unit: stockData.unit,
+              minQuantity: stockData.minQuantity,
+              location: stockData.location,
+              description: stockData.description,
+              expirationDate: stockData.expirationDate,
+              lastUpdated: Date.now(),
+              updatedBy: req.userId
+            },
+            { new: true }
+          ).populate('updatedBy', 'name email');
+          
+          results.push({ success: true, item: updatedItem, action: 'updated' });
+          console.log('✅ Successfully updated:', stockData.itemName);
+        } else {
+          // Create new item
+          const newItem = new Stock({
+            ...stockData,
+            updatedBy: req.userId,
+            status: 'in-stock'
+          });
 
-        await stock.save();
-        results.push({ success: true, itemName: row.itemName });
-        console.log('✅ Successfully imported:', row.itemName);
+          await newItem.save();
+          const populatedItem = await Stock.findById(newItem._id)
+            .populate('updatedBy', 'name email');
+          
+          results.push({ success: true, item: populatedItem, action: 'created' });
+          console.log('✅ Successfully created:', stockData.itemName);
+        }
       } catch (error) {
         console.error('❌ Error processing row:', error);
         results.push({ success: false, row, error: error.message });
@@ -833,8 +953,10 @@ app.post('/api/imports/stock', verifyToken, isLogisticsOfficer, async (req, res)
     const successful = results.filter(r => r.success).length;
     const failed = results.filter(r => !r.success).length;
 
+    console.log(`📊 Import completed: ${successful} successful, ${failed} failed`);
+
     res.json({
-      message: `Import completed: ${successful} items imported successfully, ${failed} failed`,
+      message: `Import completed: ${successful} items processed successfully, ${failed} failed`,
       results
     });
 
@@ -844,7 +966,6 @@ app.post('/api/imports/stock', verifyToken, isLogisticsOfficer, async (req, res)
   }
 });
 
-// Category Routes
 app.get('/api/categories', verifyToken, async (req, res) => {
   try {
     const categories = await Category.find().sort({ name: 1 });
@@ -912,7 +1033,6 @@ app.delete('/api/categories/:id', verifyToken, async (req, res) => {
   }
 });
 
-// Notification Routes
 app.get('/api/notifications', verifyToken, async (req, res) => {
   try {
     const notifications = await Notification.find({ userId: req.user.id })
@@ -965,8 +1085,7 @@ app.put('/api/notifications/:id/read', verifyToken, async (req, res) => {
   }
 });
 
-// Repair Request Routes
-app.get('/api/repair-requests', verifyToken, checkRole(['Admin', 'LogisticsOfficer']), async (req, res) => {
+app.get('/api/repair-requests', verifyToken, async (req, res) => {
   try {
     const repairRequests = await RepairRequest.find()
       .populate('requestedBy', 'name email')
@@ -978,61 +1097,100 @@ app.get('/api/repair-requests', verifyToken, checkRole(['Admin', 'LogisticsOffic
   }
 });
 
-app.post('/api/repair-requests', verifyToken, async (req, res) => {
+app.post('/api/repair-requests', verifyToken, checkRole(['UnitLeader']), upload.single('photo'), async (req, res) => {
   try {
-    const { itemName, issue } = req.body;
+    console.log('Creating repair request:', {
+      body: req.body,
+      file: req.file,
+      user: req.user
+    });
+
+    const { location, priority } = req.body;
     
+    if (!req.file) {
+      return res.status(400).json({ message: 'Photo is required' });
+    }
+
+    const photoUrl = `/uploads/${req.file.filename}`;
+
     const repairRequest = new RepairRequest({
-      itemName,
-      issue,
+      location,
+      priority,
+      photoUrl,
       requestedBy: req.userId,
       status: 'pending'
     });
 
     await repairRequest.save();
-    
-    const populatedRequest = await RepairRequest.findById(repairRequest._id)
-      .populate('requestedBy', 'name email');
-    
-    // Create notification for admin
-    const admins = await User.find({ role: 'Admin' });
-    for (const admin of admins) {
-      await new Notification({
-        userId: admin._id,
-        message: `New repair request for ${itemName} by ${req.user.name}`
-      }).save();
-    }
 
-    res.status(201).json(populatedRequest);
+    // Notify admin about new repair request
+    const admins = await User.find({ role: 'Admin' });
+    await Promise.all(admins.map(admin => 
+      Notification.create({
+        userId: admin._id,
+        message: `New repair request submitted for location "${location}" by ${req.user.name}`
+      })
+    ));
+
+    res.status(201).json(repairRequest);
   } catch (error) {
     console.error('Error creating repair request:', error);
-    res.status(500).json({ message: 'Error creating repair request' });
+    res.status(500).json({ message: 'Error creating repair request', error: error.message });
   }
 });
 
-app.put('/api/repair-requests/:id', verifyToken, checkRole(['Admin']), async (req, res) => {
+app.get('/api/repair-requests/my-requests', verifyToken, checkRole(['UnitLeader']), async (req, res) => {
   try {
-    const { status, adminRemark } = req.body;
-    
-    const repairRequest = await RepairRequest.findByIdAndUpdate(
-      req.params.id,
-      {
-        status,
-        adminRemark,
-        updatedAt: Date.now()
-      },
-      { new: true }
-    ).populate('requestedBy', 'name email');
+    const requests = await RepairRequest.find({ requestedBy: req.userId })
+      .sort({ createdAt: -1 });
+    res.json(requests);
+  } catch (error) {
+    console.error('Error fetching repair requests:', error);
+    res.status(500).json({ message: 'Error fetching repair requests' });
+  }
+});
 
+app.patch('/api/repair-requests/:id/status', verifyToken, checkRole(['Admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, adminRemark } = req.body;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status. Must be either approved or rejected' });
+    }
+
+    const repairRequest = await RepairRequest.findById(id);
     if (!repairRequest) {
       return res.status(404).json({ message: 'Repair request not found' });
     }
 
-    // Create notification for requester
-    await new Notification({
-      userId: repairRequest.requestedBy._id,
-      message: `Your repair request for ${repairRequest.itemName} has been ${status}`
-    }).save();
+    // Update repair request status
+    repairRequest.status = status;
+    repairRequest.adminRemark = adminRemark;
+    repairRequest.updatedAt = new Date();
+    await repairRequest.save();
+
+    // If approved, create an under repair item
+    if (status === 'approved') {
+      const underRepairItem = new UnderRepair({
+        repairRequestId: repairRequest._id,
+        location: repairRequest.location,
+        priority: repairRequest.priority,
+        photoUrl: repairRequest.photoUrl,
+        requestedBy: repairRequest.requestedBy,
+        status: 'pending',
+        remarks: adminRemark
+      });
+      await underRepairItem.save();
+    }
+
+    // Notify the requester
+    await Notification.create({
+      userId: repairRequest.requestedBy,
+      message: `Your repair request for location "${repairRequest.location}" has been ${status}${
+        adminRemark ? `. Remarks: ${adminRemark}` : ''
+      }`
+    });
 
     res.json(repairRequest);
   } catch (error) {
@@ -1041,28 +1199,66 @@ app.put('/api/repair-requests/:id', verifyToken, checkRole(['Admin']), async (re
   }
 });
 
-app.delete('/api/repair-requests/:id', verifyToken, checkRole(['Admin']), async (req, res) => {
+app.get('/api/under-repair', verifyToken, checkRole(['Admin', 'LogisticsOfficer', 'UnitLeader']), async (req, res) => {
   try {
-    const repairRequest = await RepairRequest.findById(req.params.id);
+    const query = req.user.role === 'UnitLeader' ? { requestedBy: req.userId } : {};
     
-    if (!repairRequest) {
-      return res.status(404).json({ message: 'Repair request not found' });
-    }
-
-    await RepairRequest.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Repair request deleted successfully' });
+    const repairItems = await UnderRepair.find(query)
+      .sort({ createdAt: -1 })
+      .populate('requestedBy', 'name email')
+      .populate('repairRequestId');
+    
+    res.json(repairItems);
   } catch (error) {
-    console.error('Error deleting repair request:', error);
-    res.status(500).json({ message: 'Error deleting repair request' });
+    console.error('Error fetching repair items:', error);
+    res.status(500).json({ message: 'Error fetching repair items' });
   }
 });
 
-// Route for Logistics Officers to issue items directly
+app.patch('/api/under-repair/:id/status', verifyToken, checkRole(['Admin', 'LogisticsOfficer']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, remarks } = req.body;
+
+    if (!['in_progress', 'completed'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status. Must be either in_progress or completed' });
+    }
+
+    const repairItem = await UnderRepair.findById(id);
+    if (!repairItem) {
+      return res.status(404).json({ message: 'Repair item not found' });
+    }
+
+    repairItem.status = status;
+    if (remarks) {
+      repairItem.remarks = remarks;
+    }
+    repairItem.updatedAt = new Date();
+    await repairItem.save();
+
+    // Notify the requester
+    await Notification.create({
+      userId: repairItem.requestedBy,
+      message: `Your repair item for location "${repairItem.location}" is now ${status === 'in_progress' ? 'being repaired' : 'repaired'}${
+        remarks ? `. Remarks: ${remarks}` : ''
+      }`
+    });
+
+    res.json(repairItem);
+  } catch (error) {
+    console.error('Error updating repair status:', error);
+    res.status(500).json({ message: 'Error updating repair status' });
+  }
+});
+
 app.post('/api/stock/issue', verifyToken, async (req, res) => {
   try {
-    // Verify user is a Logistics Officer
-    if (req.user.role !== 'Logistics Officer') {
-      return res.status(403).json({ message: 'Only Logistics Officers can issue items' });
+    // Verify user is a Logistics Officer (case-insensitive check)
+    if (req.user.role.toLowerCase() !== 'logisticsofficer') {
+      return res.status(403).json({ 
+        message: 'Only Logistics Officers can issue items',
+        currentRole: req.user.role
+      });
     }
 
     const { itemName, quantity, unit, issuedTo, purpose, remarks } = req.body;
@@ -1079,7 +1275,7 @@ app.post('/api/stock/issue', verifyToken, async (req, res) => {
     }
 
     // Find the item in stock
-    const stockItem = await Stock.findOne({ name: itemName });
+    const stockItem = await Stock.findOne({ itemName: itemName }); // Updated to use itemName instead of name
     if (!stockItem) {
       return res.status(404).json({ message: 'Item not found in stock' });
     }
@@ -1101,11 +1297,14 @@ app.post('/api/stock/issue', verifyToken, async (req, res) => {
       issuedTo,
       issuedBy: req.user._id,
       purpose,
-      remarks: remarks || ''
+      remarks: remarks || '',
+      status: 'in-use'  // Set status as in-use
     });
 
     // Update stock quantity
     stockItem.quantity -= numQuantity;
+    stockItem.lastUpdated = new Date();
+    stockItem.updatedBy = req.user._id;
     
     // Check if stock is below minimum quantity
     if (stockItem.quantity <= stockItem.minQuantity) {
@@ -1121,7 +1320,7 @@ app.post('/api/stock/issue', verifyToken, async (req, res) => {
 
     // Populate the issuance record with item and user details
     const populatedIssuance = await Issuance.findById(issuance._id)
-      .populate('item', 'name category unit')
+      .populate('item', 'itemName category unit')
       .populate('issuedBy', 'name');
 
     res.status(200).json({
@@ -1135,7 +1334,6 @@ app.post('/api/stock/issue', verifyToken, async (req, res) => {
   }
 });
 
-// Reports Routes
 app.get('/api/reports', verifyToken, checkRole(['Admin', 'SystemAdmin']), async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
@@ -1260,7 +1458,6 @@ app.get('/api/reports', verifyToken, checkRole(['Admin', 'SystemAdmin']), async 
   }
 });
 
-// Download reports endpoint
 app.get('/api/reports/download/:reportType', verifyToken, checkRole(['Admin', 'SystemAdmin']), async (req, res) => {
   try {
     const { reportType } = req.params;
@@ -1337,10 +1534,303 @@ app.get('/api/reports/download/:reportType', verifyToken, checkRole(['Admin', 'S
   }
 });
 
-app.use('/api/users', userRoutes);
+app.post('/api/stock/bulk-update', verifyToken, isLogisticsOfficer, async (req, res) => {
+  try {
+    console.log('📊 Processing bulk update request');
+    
+    const { items } = req.body;
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ message: 'Items must be an array' });
+    }
+
+    console.log(`📝 Processing ${items.length} items`);
+
+    // Process each item
+    const results = [];
+    for (const item of items) {
+      try {
+        // Validate required fields
+        if (!item.itemName || !item.category || !item.quantity || !item.unit || !item.location) {
+          console.log('❌ Missing required fields in item:', item);
+          results.push({ success: false, item, error: 'Missing required fields' });
+          continue;
+        }
+
+        // Check if item exists
+        const existingItem = await Stock.findOne({ itemName: item.itemName });
+        
+        if (existingItem) {
+          // Update existing item
+          const updatedItem = await Stock.findByIdAndUpdate(
+            existingItem._id,
+            {
+              category: item.category,
+              quantity: Number(item.quantity),
+              unit: item.unit,
+              minQuantity: Number(item.minQuantity) || 10,
+              location: item.location,
+              description: item.description || '',
+              expirationDate: item.expirationDate ? new Date(item.expirationDate) : null,
+              lastUpdated: Date.now(),
+              updatedBy: req.userId
+            },
+            { new: true }
+          ).populate('updatedBy', 'name email');
+          
+          results.push({ success: true, item: updatedItem, action: 'updated' });
+          console.log('✅ Successfully updated:', item.itemName);
+        } else {
+          // Create new item
+          const newItem = new Stock({
+            itemName: item.itemName,
+            category: item.category,
+            quantity: Number(item.quantity),
+            unit: item.unit,
+            minQuantity: Number(item.minQuantity) || 10,
+            location: item.location,
+            description: item.description || '',
+            expirationDate: item.expirationDate ? new Date(item.expirationDate) : null,
+            updatedBy: req.userId,
+            status: 'in-stock'
+          });
+
+          await newItem.save();
+          const populatedItem = await Stock.findById(newItem._id)
+            .populate('updatedBy', 'name email');
+          
+          results.push({ success: true, item: populatedItem, action: 'created' });
+          console.log('✅ Successfully created:', item.itemName);
+        }
+      } catch (error) {
+        console.error('❌ Error processing item:', error);
+        results.push({ success: false, item, error: error.message });
+      }
+    }
+
+    // Return results summary
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    res.json({
+      message: `Bulk update completed: ${successful} items processed successfully, ${failed} failed`,
+      results
+    });
+
+  } catch (error) {
+    console.error('❌ Bulk update error:', error);
+    res.status(500).json({ message: 'Error processing bulk update', error: error.message });
+  }
+});
+
+app.get('/api/stock/issued', verifyToken, async (req, res) => {
+  try {
+    console.log('Fetching issued items...');
+    const query = req.user.role === 'UnitLeader' ? { status: { $ne: 'completed' } } : {};
+    
+    const issuedItems = await Issuance.find(query)
+      .populate({
+        path: 'item',
+        select: 'itemName serialNumber status'
+      })
+      .populate({
+        path: 'issuedBy',
+        select: 'name'
+      })
+      .sort({ issuedAt: -1 });
+
+    console.log('Found issued items:', issuedItems.length);
+
+    const formattedItems = await Promise.all(issuedItems.map(async item => {
+      let assignedTo = item.issuedTo;
+      
+      // If issuedTo is an ObjectId, try to fetch the user name
+      if (mongoose.Types.ObjectId.isValid(item.issuedTo)) {
+        try {
+          const user = await User.findById(item.issuedTo);
+          if (user) {
+            assignedTo = user.name;
+          }
+        } catch (err) {
+          console.error('Error fetching user:', err);
+        }
+      }
+
+      // Get the request status if it exists
+      let status = 'in-use';
+      try {
+        const request = await Request.findOne({
+          itemName: item.item?.itemName,
+          requestedBy: mongoose.Types.ObjectId.isValid(item.issuedTo) ? item.issuedTo : null
+        }).sort({ updatedAt: -1 });
+        
+        if (request && request.status === 'completed') {
+          status = 'completed';
+        }
+      } catch (err) {
+        console.error('Error fetching request status:', err);
+      }
+
+      return {
+        _id: item._id,
+        name: item.item?.itemName || 'Unknown Item',
+        serialNumber: item.item?.serialNumber || 'N/A',
+        status,
+        assignedTo,
+        issueDate: item.issuedAt,
+        quantity: item.quantity,
+        unit: item.unit,
+        purpose: item.purpose,
+        remarks: item.remarks
+      };
+    }));
+
+    res.json(formattedItems);
+  } catch (error) {
+    console.error('Error fetching issued items:', error);
+    res.status(500).json({ message: 'Error fetching issued items' });
+  }
+});
+
+app.get('/api/logs', verifyToken, checkRole(['SystemAdmin', 'Admin']), async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    let query = {};
+
+    // Apply filters
+    if (req.query.module && req.query.module !== '') {
+      query.module = req.query.module;
+    }
+    if (req.query.action && req.query.action !== '') {
+      query.action = req.query.action;
+    }
+    if (req.query.startDate && req.query.endDate) {
+      query.timestamp = {
+        $gte: new Date(req.query.startDate),
+        $lte: new Date(req.query.endDate)
+      };
+    }
+    if (req.query.search) {
+      query.$or = [
+        { details: { $regex: req.query.search, $options: 'i' } },
+        { action: { $regex: req.query.search, $options: 'i' } },
+        { module: { $regex: req.query.search, $options: 'i' } }
+      ];
+    }
+
+    const [logs, total] = await Promise.all([
+      Log.find(query)
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('performedBy', 'name')
+        .populate('affectedUser', 'name')
+        .lean(),
+      Log.countDocuments(query)
+    ]);
+
+    res.json({
+      logs,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    console.error('Error fetching logs:', error);
+    res.status(500).json({ message: 'Error fetching logs' });
+  }
+});
+
+app.get('/api/logs/export', verifyToken, checkRole(['SystemAdmin', 'Admin']), async (req, res) => {
+  try {
+    let query = {};
+
+    // Apply filters
+    if (req.query.module && req.query.module !== '') {
+      query.module = req.query.module;
+    }
+    if (req.query.action && req.query.action !== '') {
+      query.action = req.query.action;
+    }
+    if (req.query.startDate && req.query.endDate) {
+      query.timestamp = {
+        $gte: new Date(req.query.startDate),
+        $lte: new Date(req.query.endDate)
+      };
+    }
+    if (req.query.search) {
+      query.$or = [
+        { details: { $regex: req.query.search, $options: 'i' } },
+        { action: { $regex: req.query.search, $options: 'i' } },
+        { module: { $regex: req.query.search, $options: 'i' } }
+      ];
+    }
+
+    const logs = await Log.find(query)
+      .sort({ timestamp: -1 })
+      .populate('performedBy', 'name')
+      .populate('affectedUser', 'name')
+      .lean();
+
+    const fields = ['timestamp', 'action', 'module', 'details', 'performedBy.name', 'ipAddress', 'userAgent'];
+    const opts = { fields };
+
+    const csv = json2csv(logs.map(log => ({
+      ...log,
+      timestamp: new Date(log.timestamp).toLocaleString(),
+      'performedBy.name': log.performedBy?.name || 'System'
+    })));
+
+    res.header('Content-Type', 'text/csv');
+    res.attachment('system-logs.csv');
+    res.send(csv);
+  } catch (error) {
+    console.error('Error exporting logs:', error);
+    res.status(500).json({ message: 'Error exporting logs' });
+  }
+});
+
+app.post('/api/test-log', verifyToken, checkRole(['SystemAdmin']), async (req, res) => {
+  try {
+    const log = new Log({
+      action: 'create',
+      module: 'test',
+      description: 'Test log entry',
+      performedBy: req.userId,
+      ipAddress: req.ip || 'unknown',
+      userAgent: req.get('user-agent') || 'unknown',
+      metadata: {
+        body: { test: true },
+        params: {},
+        query: {},
+        response: 'Test response'
+      }
+    });
+
+    await log.save();
+    console.log('✅ Test log created:', log);
+    res.json({ message: 'Test log created', log });
+  } catch (error) {
+    console.error('❌ Error creating test log:', error);
+    res.status(500).json({ message: 'Error creating test log', error: error.message });
+  }
+});
+
+app.get('/api/debug-logs', verifyToken, checkRole(['SystemAdmin']), async (req, res) => {
+  try {
+    const logs = await Log.find().sort({ createdAt: -1 }).limit(10);
+    console.log('Debug - Found logs:', logs);
+    res.json({ logs });
+  } catch (error) {
+    console.error('Error in debug logs:', error);
+    res.status(500).json({ message: 'Error in debug logs', error: error.message });
+  }
+});
 
 // Start server
 const port = process.env.PORT || 5000;
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`🚀 Server is running on port ${port}`);
 }); 

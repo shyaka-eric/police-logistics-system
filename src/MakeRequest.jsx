@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiHome, FiUser, FiSettings, FiLogOut } from "react-icons/fi";
 import RequestForm from "./components/RequestForm";
-import Sidebar from "./components/Sidebar";
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
@@ -33,24 +32,15 @@ const Dashboard = () => {
 
   
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
+    <div className="flex-1 p-6">
+      {/* Header */}
+      <div className="bg-white p-4 shadow-md flex justify-between items-center rounded-lg">
+        <h1 className="text-2xl font-semibold text-gray-700">User, {user?.name} 🎉</h1>
+        <p className="text-gray-600">Role: {user?.role}</p>
+      </div>
 
-      <Sidebar />
-
-      {/* Main Content */}
-      <div className="flex-1 p-6">
-        {/* Header */}
-        <div className="bg-white p-4 shadow-md flex justify-between items-center rounded-lg">
-          <h1 className="text-2xl font-semibold text-gray-700">User, {user?.name} 🎉</h1>
-          <p className="text-gray-600">Role: {user?.role}</p>
-        </div>
-
-        <div className="mt-8">
-            <RequestForm />
-        </div>
-
-        
+      <div className="mt-8">
+        <RequestForm />
       </div>
     </div>
   );

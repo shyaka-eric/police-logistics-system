@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import Sidebar from "./Sidebar";
 
 const NewCategory = () => {
   const [formData, setFormData] = useState({
@@ -137,94 +136,91 @@ const NewCategory = () => {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      <Sidebar />
-      <div className="flex-1 p-6">
-        <div className="bg-white p-4 shadow-md flex justify-between items-center rounded-lg">
-          <h1 className="text-2xl font-semibold text-gray-700">
-            {user ? `Welcome, ${user.name} 🎉` : "Welcome!"}
-          </h1>
-          <p className="text-gray-600">{user ? `Role: ${user.role}` : "Loading..."}</p>
-        </div>
+    <div className="flex-1 p-6">
+      <div className="bg-white p-4 shadow-md flex justify-between items-center rounded-lg">
+        <h1 className="text-2xl font-semibold text-gray-700">
+          {user ? `Welcome, ${user.name} 🎉` : "Welcome!"}
+        </h1>
+        <p className="text-gray-600">{user ? `Role: ${user.role}` : "Loading..."}</p>
+      </div>
 
-        {/* Form Section */}
-        <div className="bg-white p-6 rounded-lg shadow-md mt-3">
-          <h2 className="text-xl font-semibold text-gray-700 mb-4">
-            {editMode ? "Edit Category" : "Add New Category"}
-          </h2>
+      {/* Form Section */}
+      <div className="bg-white p-6 rounded-lg shadow-md mt-3">
+        <h2 className="text-xl font-semibold text-gray-700 mb-4">
+          {editMode ? "Edit Category" : "Add New Category"}
+        </h2>
 
-          {message && <p className="text-green-500" aria-live="polite">{message}</p>}
+        {message && <p className="text-green-500" aria-live="polite">{message}</p>}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-gray-700">Category Name</label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-                required
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-gray-700">Category Name</label>
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+              required
+            />
+          </div>
 
-            <div>
-              <label className="block text-gray-700">Description</label>
-              <input
-                type="text"
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-                required
-              />
-            </div>
+          <div>
+            <label className="block text-gray-700">Description</label>
+            <input
+              type="text"
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+              required
+            />
+          </div>
 
-            <button
-              type="submit"
-              className={`w-full py-2 rounded-lg transition ${editMode ? "bg-yellow-600 hover:bg-yellow-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
-            >
-              {editMode ? "Update Category" : "Add Category"}
-            </button>
-          </form>
-        </div>
+          <button
+            type="submit"
+            className={`w-full py-2 rounded-lg transition ${editMode ? "bg-yellow-600 hover:bg-yellow-700" : "bg-blue-600 hover:bg-blue-700"} text-white`}
+          >
+            {editMode ? "Update Category" : "Add Category"}
+          </button>
+        </form>
+      </div>
 
-        {/* Table Section */}
-        <div className="bg-white p-6 rounded-lg shadow-md mt-6">
-          <h2 className="text-xl font-semibold text-gray-700 mb-4">Category List</h2>
+      {/* Table Section */}
+      <div className="bg-white p-6 rounded-lg shadow-md mt-6">
+        <h2 className="text-xl font-semibold text-gray-700 mb-4">Category List</h2>
 
-          <table className="w-full border-collapse border border-gray-300">
-            <thead>
-              <tr className="bg-gray-200">
-                <th className="border border-gray-300 p-2">Name</th>
-                <th className="border border-gray-300 p-2">Description</th>
-                <th className="border border-gray-300 p-2">Actions</th>
+        <table className="w-full border-collapse border border-gray-300">
+          <thead>
+            <tr className="bg-gray-200">
+              <th className="border border-gray-300 p-2">Name</th>
+              <th className="border border-gray-300 p-2">Description</th>
+              <th className="border border-gray-300 p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {categories.map((category) => (
+              <tr key={category.id} className="text-center">
+                <td className="border border-gray-300 p-2">{category.name}</td>
+                <td className="border border-gray-300 p-2">{category.description}</td>
+                <td className="border border-gray-300 p-2 space-x-2">
+                  <button
+                    onClick={() => handleEdit(category)}
+                    className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(category.id)}
+                    className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {categories.map((category) => (
-                <tr key={category.id} className="text-center">
-                  <td className="border border-gray-300 p-2">{category.name}</td>
-                  <td className="border border-gray-300 p-2">{category.description}</td>
-                  <td className="border border-gray-300 p-2 space-x-2">
-                    <button
-                      onClick={() => handleEdit(category)}
-                      className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(category.id)}
-                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -31,6 +31,11 @@ const issuanceSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  status: {
+    type: String,
+    enum: ['in-use', 'completed', 'maintenance', 'repair'],
+    default: 'in-use'
+  },
   issuedAt: {
     type: Date,
     default: Date.now

@@ -51,13 +51,25 @@ const Login = ({ setUser }) => {
             role: formData.role,
           };
 
+      console.log('🚀 Sending login request:', {
+        url: `http://localhost:5000/api/auth/${endpoint}`,
+        payload: { ...payload, password: '***' }
+      });
+
       const { data } = await axios.post(
         `http://localhost:5000/api/auth/${endpoint}`,
         payload
       );
 
+      console.log('✅ Login response:', {
+        status: data.user?.status,
+        role: data.user?.role,
+        hasToken: !!data.token
+      });
+
       // Check user status before proceeding with login
       if (data.user?.status === 'inactive') {
+        console.log('❌ User is inactive');
         setError("Your account has been deactivated. Please contact your system administrator.");
         return;
       }
@@ -75,7 +87,12 @@ const Login = ({ setUser }) => {
         setIsLogin(true);
       }
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("❌ Login error:", {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        message: error.response?.data?.message,
+        error: error.message
+      });
       
       if (error.response?.status === 403) {
         setError(error.response.data.message || "Your account has been deactivated. Please contact your system administrator.");

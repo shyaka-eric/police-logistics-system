@@ -7,6 +7,7 @@ import Feature from '@components/Feature';
 import Footer from '@components/Footer';
 import logo from '@images/logo.png';
 import axios from 'axios';
+import { SystemLogs } from './components/SystemLogs';
 
 const features = [
   {
@@ -91,7 +92,6 @@ const App = () => {
         <Route path="/dashboard/*" element={
           user ? <Dashboard user={user} setUser={setUser} /> : <Navigate to="/login" />
         } />
-        {/* Add other protected routes here */}
         <Route path="/" element={<Navigate to="/dashboard" />} />
       </Routes>
     </Router>

@@ -11,35 +11,45 @@ import {
   FaSignOutAlt, 
   FaWrench, 
   FaBoxes,
-  FaCog 
+  FaCog,
+  FaPlus,
+  FaTools,
+  FaUser,
+  FaToolbox
 } from 'react-icons/fa';
 import { memo } from 'react';
 import PropTypes from 'prop-types';
+import { FiHome, FiUsers, FiActivity } from 'react-icons/fi';
 
 const navigationConfig = {
   UnitLeader: [
-    { path: '/request-item', icon: FaClipboardList, label: 'Request Item' },
-    { path: '/track-items', icon: FaBox, label: 'Track In-Use Items' },
-    { path: '/my-requests', icon: FaEye, label: 'My Requests' },
-    { path: '/request-repair', icon: FaWrench, label: 'Request Repair' },
-    { path: '/profile', icon: FaUserCog, label: 'My Profile' },
+    { path: '/dashboard/request-item', icon: FaClipboardList, label: 'Request Item' },
+    { path: '/dashboard/track-items', icon: FaBox, label: 'Track In-Use Items' },
+    { path: '/dashboard/my-requests', icon: FaEye, label: 'My Requests' },
+    { path: '/dashboard/request-repair', icon: FaWrench, label: 'Request Repair' },
+    { path: '/dashboard/manage-repairs', icon: FaToolbox, label: 'Repair Items' },
+    { path: '/dashboard/profile', icon: FaUserCog, label: 'My Profile' },
   ],
   Admin: [
-    { path: '/assess-requests', icon: FaClipboardList, label: 'Assess Requests' },
-    { path: '/stock-availability', icon: FaBox, label: 'Stock Availability' },
-    { path: '/manage-approvals', icon: FaCheckCircle, label: 'Manage Approvals' },
-    { path: '/view-reports', icon: FaChartBar, label: 'View Reports' },
+    { path: '/dashboard/assess-requests', icon: FaClipboardList, label: 'Assess Requests' },
+    { path: '/dashboard/assess-repair-requests', icon: FaWrench, label: 'Assess Repairs' },
+    { path: '/dashboard/stock-availability', icon: FaBox, label: 'Stock Availability' },
+    { path: '/dashboard/manage-approvals', icon: FaCheckCircle, label: 'Manage Approvals' },
+    { path: '/dashboard/manage-repairs', icon: FaToolbox, label: 'Manage Repairs' },
+    { path: '/dashboard/view-reports', icon: FaChartBar, label: 'View Reports' },
   ],
   LogisticsOfficer: [
-    { path: '/approved-requests', icon: FaClipboardList, label: 'Approved Requests' },
-    { path: '/stock-management', icon: FaBox, label: 'Manage Stock' },
-    { path: '/issue-items', icon: FaBoxes, label: 'Issue Items' },
+    { path: '/dashboard/approved-requests', icon: FaClipboardList, label: 'Approved Requests' },
+    { path: '/dashboard/stock-management', icon: FaBox, label: 'Manage Stock' },
+    { path: '/dashboard/issue-items', icon: FaBoxes, label: 'Issue Items' },
+    { path: '/dashboard/manage-repairs', icon: FaToolbox, label: 'Manage Repairs' },
   ],
   SystemAdmin: [
-    { path: '/assess-requests', icon: FaClipboardList, label: 'Assess Requests' },
-    { path: '/stock-management', icon: FaBox, label: 'Stock Management' },
-    { path: '/manage-users', icon: FaUsers, label: 'Manage Users' },
-    { path: '/view-reports', icon: FaChartBar, label: 'View Reports' },
+    { path: '/dashboard/assess-requests', icon: FaClipboardList, label: 'Assess Requests' },
+    { path: '/dashboard/stock-management', icon: FaBox, label: 'Stock Management' },
+    { path: '/dashboard/manage-users', icon: FaUsers, label: 'Manage Users' },
+    { path: '/dashboard/view-reports', icon: FaChartBar, label: 'View Reports' },
+    { path: '/dashboard/system-logs', icon: FiActivity, label: 'System Logs' },
   ],
 };
 
@@ -47,6 +57,7 @@ export const Sidebar = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user'));
+  const role = user?.role;
 
   const isActive = (path) => {
     return location.pathname === path;
@@ -59,10 +70,9 @@ export const Sidebar = memo(() => {
   };
 
   const renderNavLinks = () => {
-    const userRole = user?.role;
-    if (!userRole || !navigationConfig[userRole]) return null;
+    if (!role || !navigationConfig[role]) return null;
 
-    return navigationConfig[userRole].map(({ path, icon: Icon, label }) => (
+    return navigationConfig[role].map(({ path, icon: Icon, label }) => (
       <Link
         key={path}
         to={path}
@@ -78,19 +88,19 @@ export const Sidebar = memo(() => {
   };
 
   return (
-    <aside className="bg-gray-800 text-white w-64 min-h-screen p-4" role="navigation">
+    <div className="w-64 min-h-screen bg-gray-800 text-white p-4">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold">Logistics System</h2>
-        <p className="text-sm text-gray-400">Welcome, {user?.name || 'User'}</p>
-        <p className="text-xs text-gray-500">Role: {user?.role}</p>
+        <h1 className="text-2xl font-bold mb-2">Logistics System</h1>
+        <p className="text-sm text-gray-400">Welcome, {user?.name}</p>
+        <p className="text-xs text-gray-500">Role: {role}</p>
       </div>
 
       <nav className="space-y-2">
-        <Link
-          to="/dashboard"
-          className={`flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-700 ${
-            isActive('/dashboard') ? 'bg-gray-700' : ''
-          }`}
+        <Link 
+          to="/dashboard" 
+          className={`flex items-center space-x-2 p-2 rounded-lg transition-colors duration-200 
+            hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 
+            ${isActive('/dashboard') ? 'bg-gray-700' : ''}`}
         >
           <FaHome className="text-lg" />
           <span>Dashboard</span>
@@ -100,13 +110,14 @@ export const Sidebar = memo(() => {
 
         <button
           onClick={handleLogout}
-          className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-700 w-full mt-8 text-left"
+          className="w-full flex items-center space-x-2 p-2 rounded-lg transition-colors duration-200 
+            hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
         >
           <FaSignOutAlt className="text-lg" />
           <span>Logout</span>
         </button>
       </nav>
-    </aside>
+    </div>
   );
 });
 
@@ -115,6 +126,4 @@ Sidebar.propTypes = {
     name: PropTypes.string,
     role: PropTypes.string,
   }),
-};
-
-export default Sidebar; 
+}; 

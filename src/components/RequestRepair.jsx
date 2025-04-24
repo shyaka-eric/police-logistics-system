@@ -1,35 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
-import { FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
+import { FiAlertCircle, FiCheckCircle, FiUpload, FiImage } from 'react-icons/fi';
 
 export const RequestRepair = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [items, setItems] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [formData, setFormData] = useState({
-    itemId: '',
-    issueDescription: '',
     priority: 'low',
     location: '',
   });
-
-  useEffect(() => {
-    fetchAssignedItems();
-  }, []);
-
-  const fetchAssignedItems = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:5000/api/items/assigned', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setItems(response.data);
-    } catch (err) {
-      setError('Failed to fetch assigned items');
-      console.error('Error fetching items:', err);
-    }
-  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -39,28 +21,55 @@ export const RequestRepair = () => {
     }));
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        setError('File size should not exceed 5MB');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        setError('Please upload an image file');
+        return;
+      }
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+      setError('');
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedFile) {
+      setError('Please upload a photo of the damaged item');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
     setSuccess('');
 
+    const submitData = new FormData();
+    submitData.append('photo', selectedFile);
+    submitData.append('priority', formData.priority);
+    submitData.append('location', formData.location);
+
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://localhost:5000/api/repairs/request', formData, {
+      await axios.post('http://localhost:5000/api/repair-requests', submitData, {
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'multipart/form-data'
         }
       });
 
       setSuccess('Repair request submitted successfully');
       setFormData({
-        itemId: '',
-        issueDescription: '',
         priority: 'low',
         location: '',
       });
+      setSelectedFile(null);
+      setPreviewUrl(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to submit repair request');
       console.error('Error submitting repair request:', err);
@@ -89,40 +98,54 @@ export const RequestRepair = () => {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label htmlFor="itemId" className="block text-sm font-medium text-gray-700 mb-2">
-            Select Item
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Upload Photo of Damaged Item
           </label>
-          <select
-            id="itemId"
-            name="itemId"
-            value={formData.itemId}
-            onChange={handleInputChange}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">Select an item</option>
-            {items.map(item => (
-              <option key={item._id} value={item._id}>
-                {item.name} - {item.serialNumber || 'No Serial'}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="issueDescription" className="block text-sm font-medium text-gray-700 mb-2">
-            Issue Description
-          </label>
-          <textarea
-            id="issueDescription"
-            name="issueDescription"
-            value={formData.issueDescription}
-            onChange={handleInputChange}
-            required
-            rows="4"
-            placeholder="Describe the issue in detail..."
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-          />
+          <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
+            <div className="space-y-1 text-center">
+              {previewUrl ? (
+                <div className="relative">
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    className="mx-auto h-48 w-auto rounded-lg"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedFile(null);
+                      setPreviewUrl(null);
+                    }}
+                    className="absolute top-0 right-0 -mt-2 -mr-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <FiImage className="mx-auto h-12 w-12 text-gray-400" />
+                  <div className="flex text-sm text-gray-600">
+                    <label
+                      htmlFor="photo-upload"
+                      className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none"
+                    >
+                      <span>Upload a photo</span>
+                      <input
+                        id="photo-upload"
+                        name="photo"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="sr-only"
+                      />
+                    </label>
+                    <p className="pl-1">or drag and drop</p>
+                  </div>
+                  <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         <div>
@@ -162,9 +185,9 @@ export const RequestRepair = () => {
 
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || !selectedFile}
           className={`w-full px-6 py-3 text-white font-medium rounded-lg ${
-            isLoading
+            isLoading || !selectedFile
               ? 'bg-blue-400 cursor-not-allowed'
               : 'bg-blue-600 hover:bg-blue-700'
           }`}

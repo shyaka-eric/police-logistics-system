@@ -28,6 +28,9 @@ import { RequestItem } from './components/RequestItem';
 import { TrackItems } from './components/TrackItems';
 import { RequestRepair } from './components/RequestRepair';
 import { AssessRequests } from './components/AssessRequests';
+import { UnderRepair } from './components/UnderRepair';
+import { SystemLogs } from './components/SystemLogs';
+import { AssessRepairRequests } from './components/AssessRepairRequests';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -51,6 +54,10 @@ const App = () => {
     return user?.role === 'LogisticsOfficer';
   };
 
+  const canViewUnderRepair = () => {
+    return ['Admin', 'LogisticsOfficer', 'UnitLeader'].includes(user?.role);
+  };
+
   if (!user) {
     return (
       <Routes>
@@ -64,7 +71,11 @@ const App = () => {
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/login" element={<Login setUser={setUser} />} />
-      <Route path="/dashboard" element={<Dashboard />} />
+      
+      {/* Dashboard and nested routes */}
+      <Route path="/dashboard/*" element={<Dashboard />} />
+      
+      {/* Other routes */}
       <Route path="/profile" element={<Profile />} />
       <Route path="/request-form" element={<RequestForm />} />
       <Route path="/requests" element={<Requests />} />
@@ -91,7 +102,11 @@ const App = () => {
       {/* Admin Routes */}
       <Route 
         path="/assess-requests" 
-        element={isAdminOrHigher() ? <AssessRequests /> : <Navigate to="/dashboard" />} 
+        element={isAdminOrHigher() ? <RequestAssessment /> : <Navigate to="/dashboard" />} 
+      />
+      <Route 
+        path="/assess-repair-requests" 
+        element={isAdminOrHigher() ? <AssessRepairRequests /> : <Navigate to="/dashboard" />} 
       />
       <Route 
         path="/stock-availability" 
@@ -120,6 +135,12 @@ const App = () => {
       <Route path="/request-item" element={<RequestItem />} />
       <Route path="/track-items" element={<TrackItems />} />
       <Route path="/request-repair" element={<RequestRepair />} />
+
+      {/* Shared Routes */}
+      <Route 
+        path="/under-repair" 
+        element={canViewUnderRepair() ? <UnderRepair /> : <Navigate to="/dashboard" />} 
+      />
       
       {/* Catch all route */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -130,7 +151,7 @@ const App = () => {
 const root = createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <BrowserRouter basename="/logistics">
+    <BrowserRouter>
       <App />
     </BrowserRouter>
   </React.StrictMode>

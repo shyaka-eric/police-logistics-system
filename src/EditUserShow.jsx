@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom"; // import useParams to get the requestId
 import { FiHome, FiUser, FiSettings, FiLogOut } from "react-icons/fi";
 import EditUser from "./components/EditUser"; // Import your EditRequest component
-import Sidebar from "./components/Sidebar";
+import { Sidebar } from "./components/Sidebar";
 
 const EditUserShow = () => {
   const [user, setUser] = useState(null);

@@ -4,59 +4,88 @@ const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const { verifyToken, isSystemAdmin } = require('../middleware/auth');
+const Log = require('../models/Log');
 
 // Get all users
-router.get('/', verifyToken, isSystemAdmin, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const users = await User.find().select('-password');
+    const users = await User.find({}, '-password');
     res.json(users);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching users' });
+    console.error('❌ Error fetching users:', error);
+    res.status(500).json({ message: 'Error fetching users', error: error.message });
+  }
+});
+
+// Get user by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id, '-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('❌ Error fetching user:', error);
+    res.status(500).json({ message: 'Error fetching user', error: error.message });
   }
 });
 
 // Update user status
-router.patch('/:id/status', verifyToken, isSystemAdmin, async (req, res) => {
+router.patch('/:id/status', async (req, res) => {
   try {
-    const { id } = req.params;
     const { status } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true, select: '-password' }
+    );
 
-    // Validate MongoDB ObjectId
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid user ID format' });
-    }
-    
-    if (!['active', 'inactive'].includes(status)) {
-      return res.status(400).json({ message: 'Invalid status value' });
-    }
-
-    const user = await User.findById(id);
-    
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Prevent self-deactivation
-    if (id === req.user.id && status === 'inactive') {
-      return res.status(400).json({ message: 'Cannot deactivate your own account' });
+    // Log the status change
+    await new Log({
+      action: 'UPDATE_USER_STATUS',
+      details: `User status updated to ${status}`,
+      performedBy: req.userId,
+      affectedUser: user._id
+    }).save();
+
+    res.json(user);
+  } catch (error) {
+    console.error('❌ Error updating user status:', error);
+    res.status(500).json({ message: 'Error updating user status', error: error.message });
+  }
+});
+
+// Update user role
+router.patch('/:id/role', async (req, res) => {
+  try {
+    const { role } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { role },
+      { new: true, select: '-password' }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    user.status = status;
-    await user.save();
+    // Log the role change
+    await new Log({
+      action: 'UPDATE_USER_ROLE',
+      details: `User role updated to ${role}`,
+      performedBy: req.userId,
+      affectedUser: user._id
+    }).save();
 
-    res.json({ 
-      message: 'User status updated successfully', 
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status
-      }
-    });
+    res.json(user);
   } catch (error) {
-    console.error('Error updating user status:', error);
-    res.status(500).json({ message: 'Error updating user status' });
+    console.error('❌ Error updating user role:', error);
+    res.status(500).json({ message: 'Error updating user role', error: error.message });
   }
 });
 

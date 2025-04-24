@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FiEdit2, FiTrash2, FiPlus } from 'react-icons/fi';
+import { format } from 'date-fns';
 
 export const CategoryManagement = () => {
   const [categories, setCategories] = useState([]);

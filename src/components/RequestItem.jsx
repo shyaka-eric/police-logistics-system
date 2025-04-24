@@ -1,73 +1,105 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { FiUpload, FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
+import { FaSpinner, FaUpload, FaFileExcel, FaCloudUploadAlt } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
-import { useNavigate } from 'react-router-dom';
 
 export const RequestItem = () => {
-  const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [requestMethod, setRequestMethod] = useState('form'); // 'form' or 'excel'
   const [items, setItems] = useState([]);
-  const [formData, setFormData] = useState({
-    itemId: '',
-    quantity: '',
-    purpose: '',
-    priority: 'low',
-  });
-  const [subordinates, setSubordinates] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [formData, setFormData] = useState({
+    itemName: '',
+    quantity: '',
+    unit: '',
+    purpose: '',
+    priority: 'normal',
+    category: ''
+  });
 
+  // Fetch available items and categories on component mount
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      navigate('/login');
-      return;
-    }
     fetchItems();
-  }, [navigate]);
+    fetchCategories();
+  }, []);
 
   const fetchItems = async () => {
     try {
-      setIsLoading(true);
-      setError('');
-      const token = localStorage.getItem('token');
+      setLoading(true);
+      setError(null);
       
+      const token = localStorage.getItem('token');
       if (!token) {
-        throw new Error('No authentication token found');
+        throw new Error('Authentication token not found. Please log in again.');
       }
 
+      const user = JSON.parse(localStorage.getItem('user'));
+      console.log('Current user:', user); // Debug log
+
+      // Define allowed roles with correct casing
+      const allowedRoles = ['LogisticsOfficer', 'Admin', 'UnitLeader'];
+      
+      // Normalize role check
+      const normalizedUserRole = user?.role?.toLowerCase();
+      const normalizedAllowedRoles = allowedRoles.map(role => role.toLowerCase());
+
+      console.log('Role check:', {
+        originalRole: user?.role,
+        normalizedRole: normalizedUserRole,
+        allowedRoles: normalizedAllowedRoles
+      });
+
+      if (!user || !normalizedUserRole || !normalizedAllowedRoles.includes(normalizedUserRole)) {
+        throw new Error('You do not have permission to view stock items. Please contact your administrator.');
+      }
+
+      console.log('Fetching items with token:', token.substring(0, 10) + '...');
+      
       const response = await axios.get('http://localhost:5000/api/stock', {
         headers: { 
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
 
-      if (!response.data) {
-        throw new Error('No data received from server');
+      console.log('Items response:', response.data);
+      
+      if (!Array.isArray(response.data)) {
+        throw new Error('Invalid response format from server');
       }
 
-      const inStockItems = response.data.filter(item => item.status === 'in-stock');
-      setItems(inStockItems);
+      const availableItems = response.data.filter(item => item.quantity > 0);
+      console.log('Available items:', availableItems.length);
+      
+      setItems(availableItems);
     } catch (err) {
       console.error('Error fetching items:', err);
       if (err.response?.status === 403) {
-        setError('You do not have permission to view items. Please log in again.');
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setTimeout(() => navigate('/login'), 2000);
+        setError('Access denied. You do not have permission to view stock items.');
       } else if (err.response?.status === 401) {
-        setError('Session expired. Please log in again.');
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setTimeout(() => navigate('/login'), 2000);
+        setError('Your session has expired. Please log in again.');
       } else {
-        setError(err.response?.data?.message || 'Failed to fetch available items');
+        setError(err.response?.data?.message || err.message || 'Failed to fetch available items. Please try again.');
       }
+      setItems([]); // Reset items on error
     } finally {
-      setIsLoading(false);
+      setLoading(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:5000/api/categories', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCategories(response.data);
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+      setError('Failed to fetch categories');
     }
   };
 
@@ -77,193 +109,356 @@ export const RequestItem = () => {
       ...prev,
       [name]: value
     }));
-  };
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    setSelectedFile(file);
-
-    if (file) {
-      try {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
-          setSubordinates(jsonData);
-        };
-        reader.readAsArrayBuffer(file);
-      } catch (err) {
-        setError('Error reading Excel file');
-        console.error('Error reading file:', err);
+    // If item is selected, auto-fill unit and category
+    if (name === 'itemName') {
+      const selectedItem = items.find(item => item.itemName === value);
+      if (selectedItem) {
+        setFormData(prev => ({
+          ...prev,
+          unit: selectedItem.unit,
+          category: selectedItem.category
+        }));
       }
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError('');
-    setSuccess('');
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
 
     try {
       const token = localStorage.getItem('token');
-      const requestData = {
-        ...formData,
-        subordinates,
-        status: 'pending'
-      };
-
-      await axios.post('http://localhost:5000/api/requests', requestData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      await axios.post('http://localhost:5000/api/requests', formData, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
-      setSuccess('Request submitted successfully');
+      setSuccess('Request submitted successfully!');
       setFormData({
-        itemId: '',
+        itemName: '',
         quantity: '',
+        unit: '',
         purpose: '',
-        priority: 'low'
+        priority: 'normal',
+        category: ''
       });
-      setSubordinates([]);
-      setSelectedFile(null);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to submit request');
       console.error('Error submitting request:', err);
+      setError(err.response?.data?.message || 'Failed to submit request');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.name.match(/\.(xlsx|xls)$/)) {
+        setError('Please upload an Excel file (.xlsx or .xls)');
+        return;
+      }
+      setSelectedFile(file);
+      setError(null);
+    }
+  };
+
+  const downloadTemplate = () => {
+    // Create template workbook
+    const template = XLSX.utils.book_new();
+    const templateData = [
+      ['itemName', 'quantity', 'unit', 'purpose', 'priority', 'category'], // Headers
+      ['Example Item', '10', 'pcs', 'For office use', 'normal', 'Office Supplies'] // Example row
+    ];
+    
+    const ws = XLSX.utils.aoa_to_sheet(templateData);
+    XLSX.utils.book_append_sheet(template, ws, 'Request Template');
+    
+    // Save template
+    XLSX.writeFile(template, 'request_template.xlsx');
+  };
+
+  const handleExcelSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedFile) {
+      setError('Please select a file');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const workbook = XLSX.read(e.target.result, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const data = XLSX.utils.sheet_to_json(firstSheet);
+
+          // Validate data
+          const validationErrors = [];
+          data.forEach((row, index) => {
+            if (!row.itemName || !row.quantity || !row.unit || !row.purpose) {
+              validationErrors.push(`Row ${index + 2}: Missing required fields`);
+            }
+            if (!items.some(item => item.itemName === row.itemName)) {
+              validationErrors.push(`Row ${index + 2}: Item "${row.itemName}" not found in stock`);
+            }
+          });
+
+          if (validationErrors.length > 0) {
+            throw new Error('Validation errors:\n' + validationErrors.join('\n'));
+          }
+
+          // Submit each request
+          const token = localStorage.getItem('token');
+          await Promise.all(data.map(row => 
+            axios.post('http://localhost:5000/api/requests', row, {
+              headers: { Authorization: `Bearer ${token}` }
+            })
+          ));
+
+          setSuccess('All requests submitted successfully!');
+          setSelectedFile(null);
+          // Reset file input
+          const fileInput = document.getElementById('excel-upload');
+          if (fileInput) fileInput.value = '';
+        } catch (err) {
+          console.error('Error processing Excel:', err);
+          setError(err.message || 'Failed to process Excel file');
+        } finally {
+          setLoading(false);
+        }
+      };
+      reader.readAsArrayBuffer(selectedFile);
+    } catch (err) {
+      console.error('Error reading file:', err);
+      setError('Failed to read Excel file');
+      setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h2 className="text-2xl font-semibold mb-6">Request Item</h2>
-      
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700">
-          <FiAlertCircle className="mr-2" />
-          {error}
-        </div>
-      )}
+    <div className="flex-1 p-8">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-2xl font-bold mb-6">Make a Request</h1>
 
-      {success && (
-        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center text-green-700">
-          <FiCheckCircle className="mr-2" />
-          {success}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label htmlFor="itemId" className="block text-sm font-medium text-gray-700 mb-2">
-            Select Item
-          </label>
-          <select
-            id="itemId"
-            name="itemId"
-            value={formData.itemId}
-            onChange={handleInputChange}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">Select an item</option>
-            {items.map(item => (
-              <option key={item._id} value={item._id}>
-                {item.name} - Available: {item.quantity}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-2">
-            Quantity
-          </label>
-          <input
-            type="number"
-            id="quantity"
-            name="quantity"
-            value={formData.quantity}
-            onChange={handleInputChange}
-            required
-            min="1"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="purpose" className="block text-sm font-medium text-gray-700 mb-2">
-            Purpose
-          </label>
-          <textarea
-            id="purpose"
-            name="purpose"
-            value={formData.purpose}
-            onChange={handleInputChange}
-            required
-            rows="3"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="priority" className="block text-sm font-medium text-gray-700 mb-2">
-            Priority Level
-          </label>
-          <select
-            id="priority"
-            name="priority"
-            value={formData.priority}
-            onChange={handleInputChange}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Upload Subordinates List (Excel)
-          </label>
-          <div className="flex items-center space-x-2">
-            <label className="cursor-pointer px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center">
-              <FiUpload className="mr-2" />
-              <span>{selectedFile ? selectedFile.name : 'Choose File'}</span>
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </label>
-            {selectedFile && (
-              <span className="text-sm text-gray-500">
-                {subordinates.length} subordinates loaded
-              </span>
-            )}
+        {/* Request Method Selection */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex space-x-4 mb-6">
+            <button
+              onClick={() => setRequestMethod('form')}
+              className={`flex-1 py-3 px-4 rounded-lg font-medium ${
+                requestMethod === 'form'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Request Form
+            </button>
+            <button
+              onClick={() => setRequestMethod('excel')}
+              className={`flex-1 py-3 px-4 rounded-lg font-medium ${
+                requestMethod === 'excel'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Excel Upload
+            </button>
           </div>
-        </div>
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className={`w-full px-6 py-3 text-white font-medium rounded-lg ${
-            isLoading
-              ? 'bg-blue-400 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-700'
-          }`}
-        >
-          {isLoading ? 'Submitting...' : 'Submit Request'}
-        </button>
-      </form>
+          {error && (
+            <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
+              {success}
+            </div>
+          )}
+
+          {requestMethod === 'form' ? (
+            <form onSubmit={handleFormSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Item
+                </label>
+                <select
+                  name="itemName"
+                  value={formData.itemName}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select an item</option>
+                  {items.map(item => (
+                    <option key={item._id} value={item.itemName}>
+                      {item.itemName} ({item.quantity} {item.unit} available)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Quantity
+                </label>
+                <input
+                  type="number"
+                  name="quantity"
+                  value={formData.quantity}
+                  onChange={handleInputChange}
+                  required
+                  min="1"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Unit
+                </label>
+                <input
+                  type="text"
+                  name="unit"
+                  value={formData.unit}
+                  onChange={handleInputChange}
+                  required
+                  readOnly
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Category
+                </label>
+                <input
+                  type="text"
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  required
+                  readOnly
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Purpose
+                </label>
+                <textarea
+                  name="purpose"
+                  value={formData.purpose}
+                  onChange={handleInputChange}
+                  required
+                  rows="3"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Priority
+                </label>
+                <select
+                  name="priority"
+                  value={formData.priority}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-blue-300 flex items-center justify-center"
+              >
+                {loading ? (
+                  <>
+                    <FaSpinner className="animate-spin mr-2" />
+                    Submitting...
+                  </>
+                ) : (
+                  'Submit Request'
+                )}
+              </button>
+            </form>
+          ) : (
+            <div className="space-y-6">
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                <div className="text-center">
+                  <FaFileExcel className="mx-auto h-12 w-12 text-gray-400" />
+                  <div className="mt-4">
+                    <button
+                      onClick={downloadTemplate}
+                      className="text-blue-500 hover:text-blue-600"
+                    >
+                      Download Excel Template
+                    </button>
+                  </div>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Please use our template for correct formatting
+                  </p>
+                </div>
+                <input
+                  id="excel-upload"
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <div className="mt-4">
+                  <label
+                    htmlFor="excel-upload"
+                    className="cursor-pointer flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                  >
+                    <FaUpload className="mr-2" />
+                    Select Excel File
+                  </label>
+                </div>
+                {selectedFile && (
+                  <div className="mt-4 text-sm text-gray-500">
+                    Selected file: {selectedFile.name}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleExcelSubmit}
+                disabled={!selectedFile || loading}
+                className="w-full py-3 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-blue-300 flex items-center justify-center"
+              >
+                {loading ? (
+                  <>
+                    <FaSpinner className="animate-spin mr-2" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <FaCloudUploadAlt className="mr-2" />
+                    Upload and Submit
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
+
+export default RequestItem;
