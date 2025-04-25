@@ -12,6 +12,8 @@ export const AssessRequests = () => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [actionRemark, setActionRemark] = useState('');
 
   useEffect(() => {
     fetchRequests();
@@ -53,107 +55,69 @@ export const AssessRequests = () => {
     }
   };
 
-  const handleApprove = async (requestId) => {
+  const handleAction = async (requestId, action, remark = '') => {
     try {
-      setIsProcessing(true);
+      setLoading(true);
       const token = localStorage.getItem('token');
       const user = JSON.parse(localStorage.getItem('user'));
-      
-      // Log the request details for debugging
-      console.log('Approving request:', {
-        requestId,
-        token: token ? 'exists' : 'missing',
-        userRole: user?.role,
-        userId: user?.id
-      });
 
-      if (!token || !user) {
-        throw new Error('Authentication required');
-      }
+      // Map action to correct status
+      const status = action === 'approve' ? 'approved' : 'rejected';
 
-      if (user.role !== 'Admin') {
-        throw new Error('Only Admins can approve requests');
-      }
-
+      // Update request status
       const response = await axios.put(
         `http://localhost:5000/api/requests/${requestId}`,
         { 
-          status: 'approved',
-          adminRemark: 'Approved by Admin'
+          status,
+          adminRemark: remark 
         },
-        { 
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
+        { headers: { Authorization: `Bearer ${token}` }}
       );
 
-      // Log the response for debugging
-      console.log('Approve response:', response.data);
-      
-      await fetchRequests();
-      setShowModal(false);
-      alert('Request approved successfully!');
-    } catch (err) {
-      console.error('Error approving request:', err.response || err);
-      const errorMessage = err.response?.data?.message || err.message || 'Failed to approve request';
-      setError(errorMessage);
-      alert(errorMessage);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleReject = async (requestId) => {
-    try {
-      setIsProcessing(true);
-      const token = localStorage.getItem('token');
-      const user = JSON.parse(localStorage.getItem('user'));
-      
-      // Log the request details for debugging
-      console.log('Rejecting request:', {
-        requestId,
-        token: token ? 'exists' : 'missing',
-        userRole: user?.role,
-        userId: user?.id
-      });
-
-      if (!token || !user) {
-        throw new Error('Authentication required');
-      }
-
-      if (user.role !== 'Admin') {
-        throw new Error('Only Admins can reject requests');
-      }
-
-      const response = await axios.put(
-        `http://localhost:5000/api/requests/${requestId}`,
-        { 
-          status: 'rejected',
-          adminRemark: 'Rejected by Admin'
+      // Create notification for the requester
+      const request = response.data;
+      await axios.post(
+        'http://localhost:5000/api/notifications',
+        {
+          userId: request.requestedBy._id,
+          message: `Your request for ${request.quantity} ${request.unit} of ${request.itemName} has been ${status}${remark ? `: ${remark}` : ''}`
         },
-        { 
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
+        { headers: { Authorization: `Bearer ${token}` }}
       );
 
-      // Log the response for debugging
-      console.log('Reject response:', response.data);
-      
-      await fetchRequests();
+      // If approved, create notification for Logistics Officers
+      if (status === 'approved') {
+        const logisticsOfficers = await axios.get(
+          'http://localhost:5000/api/users?role=LogisticsOfficer',
+          { headers: { Authorization: `Bearer ${token}` }}
+        );
+
+        // Create notifications for each Logistics Officer
+        await Promise.all(
+          logisticsOfficers.data.map(officer =>
+            axios.post(
+              'http://localhost:5000/api/notifications',
+              {
+                userId: officer._id,
+                message: `New request approved for ${request.quantity} ${request.unit} of ${request.itemName}`
+              },
+              { headers: { Authorization: `Bearer ${token}` }}
+            )
+          )
+        );
+      }
+
+      // Refresh requests list
+      fetchRequests();
+      setSelectedRequest(null);
       setShowModal(false);
-      alert('Request rejected successfully!');
-    } catch (err) {
-      console.error('Error rejecting request:', err.response || err);
-      const errorMessage = err.response?.data?.message || err.message || 'Failed to reject request';
-      setError(errorMessage);
-      alert(errorMessage);
+      setActionRemark('');
+      
+    } catch (error) {
+      console.error('Error processing request:', error);
+      setError(error.response?.data?.message || 'Failed to process request');
     } finally {
-      setIsProcessing(false);
+      setLoading(false);
     }
   };
 
@@ -318,16 +282,35 @@ export const AssessRequests = () => {
             <p className="mb-4">
               Are you sure you want to {selectedRequest.status === 'pending' ? 'approve' : 'reject'} this request?
             </p>
+            <div className="mb-4">
+              <label htmlFor="remark" className="block text-sm font-medium text-gray-700 mb-2">
+                Add a remark (optional)
+              </label>
+              <textarea
+                id="remark"
+                value={actionRemark}
+                onChange={(e) => setActionRemark(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows="3"
+                placeholder="Enter your remark here..."
+              />
+            </div>
             <div className="flex justify-end space-x-4">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false);
+                  setActionRemark('');
+                }}
                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
                 disabled={isProcessing}
               >
                 Cancel
               </button>
               <button
-                onClick={() => selectedRequest.status === 'pending' ? handleApprove(selectedRequest._id) : handleReject(selectedRequest._id)}
+                onClick={() => {
+                  const action = selectedRequest.status === 'pending' ? 'approve' : 'reject';
+                  handleAction(selectedRequest._id, action, actionRemark);
+                }}
                 className={`px-4 py-2 ${
                   selectedRequest.status === 'pending' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'
                 } text-white rounded flex items-center`}

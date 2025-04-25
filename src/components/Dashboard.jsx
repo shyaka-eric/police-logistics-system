@@ -56,11 +56,6 @@ export const Dashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-800">Welcome, {user?.name}</h1>
-        <p className="text-gray-600">Role: {user?.role}</p>
-      </div>
-
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700">
           <FiAlertCircle className="mr-2" />

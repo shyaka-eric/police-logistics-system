@@ -3,11 +3,11 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const User = require('../models/User');
-const { verifyToken, isSystemAdmin } = require('../middleware/auth');
+const { verifyToken, isSystemAdmin, checkRole } = require('../middleware/auth');
 const Log = require('../models/Log');
 
 // Get all users
-router.get('/', async (req, res) => {
+router.get('/', verifyToken, async (req, res) => {
   try {
     const users = await User.find({}, '-password');
     res.json(users);
@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get user by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.params.id, '-password');
     if (!user) {
@@ -32,7 +32,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Update user status
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', verifyToken, async (req, res) => {
   try {
     const { status } = req.body;
     const user = await User.findByIdAndUpdate(
@@ -45,12 +45,23 @@ router.patch('/:id/status', async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // Get the current user's role for logging
+    const currentUser = await User.findById(req.userId, 'role');
+
     // Log the status change
     await new Log({
-      action: 'UPDATE_USER_STATUS',
+      action: 'update',
+      module: 'users',
       details: `User status updated to ${status}`,
       performedBy: req.userId,
-      affectedUser: user._id
+      userRole: currentUser?.role || 'Unknown',
+      ipAddress: req.ip || 'unknown',
+      userAgent: req.get('user-agent') || 'unknown',
+      metadata: {
+        body: req.body,
+        params: req.params,
+        query: req.query
+      }
     }).save();
 
     res.json(user);
@@ -61,7 +72,7 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 // Update user role
-router.patch('/:id/role', async (req, res) => {
+router.patch('/:id/role', verifyToken, isSystemAdmin, async (req, res) => {
   try {
     const { role } = req.body;
     const user = await User.findByIdAndUpdate(
@@ -74,12 +85,23 @@ router.patch('/:id/role', async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // Get the current user's role for logging
+    const currentUser = await User.findById(req.userId, 'role');
+
     // Log the role change
     await new Log({
-      action: 'UPDATE_USER_ROLE',
+      action: 'update',
+      module: 'users',
       details: `User role updated to ${role}`,
       performedBy: req.userId,
-      affectedUser: user._id
+      userRole: currentUser?.role || 'Unknown',
+      ipAddress: req.ip || 'unknown',
+      userAgent: req.get('user-agent') || 'unknown',
+      metadata: {
+        body: req.body,
+        params: req.params,
+        query: req.query
+      }
     }).save();
 
     res.json(user);
@@ -183,6 +205,20 @@ router.delete('/:id', verifyToken, isSystemAdmin, async (req, res) => {
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting user' });
+  }
+});
+
+// Get users by role
+router.get('/', verifyToken, async (req, res) => {
+  try {
+    const { role } = req.query;
+    const query = role ? { role } : {};
+    
+    const users = await User.find(query).select('-password');
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ message: 'Error fetching users' });
   }
 });
 

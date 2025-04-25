@@ -45,8 +45,8 @@ const navigationConfig = {
     { path: '/dashboard/manage-repairs', icon: FaToolbox, label: 'Manage Repairs' },
   ],
   SystemAdmin: [
-    { path: '/dashboard/assess-requests', icon: FaClipboardList, label: 'Assess Requests' },
-    { path: '/dashboard/stock-management', icon: FaBox, label: 'Stock Management' },
+    { path: '/dashboard/view-requests', icon: FaClipboardList, label: 'View Requests' },
+    { path: '/dashboard/stock-availability', icon: FaBox, label: 'Stock Availability' },
     { path: '/dashboard/manage-users', icon: FaUsers, label: 'Manage Users' },
     { path: '/dashboard/view-reports', icon: FaChartBar, label: 'View Reports' },
     { path: '/dashboard/system-logs', icon: FiActivity, label: 'System Logs' },
@@ -89,12 +89,6 @@ export const Sidebar = memo(() => {
 
   return (
     <div className="w-64 min-h-screen bg-gray-800 text-white p-4">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-2">Logistics System</h1>
-        <p className="text-sm text-gray-400">Welcome, {user?.name}</p>
-        <p className="text-xs text-gray-500">Role: {role}</p>
-      </div>
-
       <nav className="space-y-2">
         <Link 
           to="/dashboard" 

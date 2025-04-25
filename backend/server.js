@@ -14,6 +14,7 @@ const path = require('path');
 const fs = require('fs');
 const fileUpload = require('express-fileupload');
 const authRoutes = require('./routes/auth');
+const { router: notificationRoutes } = require('./routes/notifications');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -122,27 +123,6 @@ const categorySchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-// Add Notification Schema
-const notificationSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  message: {
-    type: String,
-    required: true
-  },
-  read: {
-    type: Boolean,
-    default: false
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
-});
-
 // Repair Request Schema
 const repairRequestSchema = new mongoose.Schema({
   location: { type: String, required: true },
@@ -187,7 +167,6 @@ const underRepairSchema = new mongoose.Schema({
 const Request = mongoose.model('Request', requestSchema);
 const Stock = mongoose.model('Stock', stockSchema);
 const Category = mongoose.model('Category', categorySchema);
-const Notification = mongoose.model('Notification', notificationSchema);
 const RepairRequest = mongoose.model('RepairRequest', repairRequestSchema);
 const UnderRepair = mongoose.model('UnderRepair', underRepairSchema);
 
@@ -386,7 +365,7 @@ app.use('/api', verifyToken, logActivity);
 
 // Protected routes
 app.use('/api/users', userRoutes);
-app.use('/api/auth', authRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Routes
 app.get('/api/user/current', verifyToken, async (req, res) => {
@@ -761,7 +740,7 @@ app.delete('/api/users/:id', verifyToken, isSystemAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/stock', verifyToken, checkRole(['LogisticsOfficer', 'Admin', 'UnitLeader']), async (req, res) => {
+app.get('/api/stock', verifyToken, checkRole(['LogisticsOfficer', 'Admin', 'UnitLeader', 'SystemAdmin']), async (req, res) => {
   try {
     console.log('Fetching stock items for user:', {
       userId: req.user._id,

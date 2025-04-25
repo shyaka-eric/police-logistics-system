@@ -222,7 +222,7 @@ export const ManageUsers = () => {
       
       // Update the users list with the new status
       setUsers(users.map(user => 
-        user._id === userId ? { ...user, status: data.user.status } : user
+        user._id === userId ? { ...user, status: data.status } : user
       ));
     } catch (err) {
       console.error('Error updating user status:', err);

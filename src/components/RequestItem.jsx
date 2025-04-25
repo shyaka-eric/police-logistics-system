@@ -116,9 +116,22 @@ export const RequestItem = () => {
 
     try {
       const token = localStorage.getItem('token');
-      await api.post('/api/requests', formData, {
+      const user = JSON.parse(localStorage.getItem('user'));
+      
+      // Submit the request
+      const response = await api.post('/api/requests', formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      // Create notification for Admin and LogisticsOfficer
+      if (user.role === 'UnitLeader') {
+        await api.post('/api/notifications/create-for-roles', {
+          roles: ['Admin', 'LogisticsOfficer'],
+          message: `New item request from ${user.name}: ${formData.quantity} ${formData.unit} of ${formData.itemName}`
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
 
       setSuccess('Request submitted successfully!');
       setFormData({
